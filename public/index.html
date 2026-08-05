@@ -1,0 +1,1411 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=5.0, user-scalable=yes">
+<title>图书馆研发工作台</title>
+<style>
+:root{
+  --blue:#2563EB;--blue-lt:#DBEAFE;--blue-bg:#EFF6FF;
+  --teal:#0D9488;--teal-lt:#CCFBF1;--teal-bg:#F0FDFA;
+  --amber:#D97706;--amber-lt:#FEF3C7;--amber-bg:#FFFBEB;
+  --bg:#F8FAFC;--card:#FFFFFF;--text:#0F172A;--text2:#475569;--text3:#94A3B8;
+  --border:#E2E8F0;--border-lt:#F1F5F9;
+  --danger:#EF4444;--danger-bg:#FEF2F2;
+  --success:#10B981;--warn:#F59E0B;
+  --shadow:0 1px 2px rgba(0,0,0,.04);--shadow-card:0 1px 3px rgba(0,0,0,.06),0 1px 2px rgba(0,0,0,.04);
+  --radius:10px;--radius-sm:6px;
+}
+*{margin:0;padding:0;box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+html{font-size:16px}
+body{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,"Helvetica Neue",sans-serif;background:var(--bg);color:var(--text);line-height:1.5;padding-bottom:calc(64px + env(safe-area-inset-bottom));-webkit-font-smoothing:antialiased}
+button,input,select,textarea{font-family:inherit}
+input[type="text"],input[type="date"],input[type="number"],select,textarea{font-size:16px!important}
+
+/* ── Top Bar ── */
+.topbar{position:sticky;top:0;z-index:100;background:var(--card);border-bottom:1px solid var(--border);padding:10px 16px;display:flex;align-items:center;justify-content:space-between;gap:8px}
+.topbar-title{font-size:17px;font-weight:700;color:var(--text);display:flex;align-items:center;gap:7px;white-space:nowrap}
+.topbar-actions{display:flex;gap:6px}
+
+.btn{display:inline-flex;align-items:center;gap:5px;padding:7px 13px;border:1px solid var(--border);border-radius:var(--radius-sm);font-size:13px;font-weight:600;cursor:pointer;background:var(--card);color:var(--text2);transition:all .15s;white-space:nowrap;min-height:36px}
+.btn:hover{background:var(--border-lt)}
+.btn-primary{background:var(--blue);color:#fff;border-color:var(--blue)}
+.btn-primary:hover{background:#1D4ED8}
+.btn-ghost{border-color:transparent}
+.btn-sm{padding:4px 9px;font-size:12px;min-height:30px;border-radius:4px}
+.btn svg{width:15px;height:15px;flex-shrink:0}
+
+/* ── Stats Row ── */
+.stats-row{display:flex;gap:8px;padding:12px 16px 8px;overflow-x:auto;-webkit-overflow-scrolling:touch;scrollbar-width:none}
+.stats-row::-webkit-scrollbar{display:none}
+.stat-card{flex:1;min-width:70px;background:var(--card);border-radius:var(--radius);padding:10px 12px;box-shadow:var(--shadow);text-align:center;border:1px solid var(--border-lt)}
+.stat-card .num{font-size:22px;font-weight:800;line-height:1.2}
+.stat-card .label{font-size:11px;color:var(--text3);margin-top:2px}
+.stat-card.danger .num{color:var(--danger)}
+.stat-card.active .num{color:var(--blue)}
+.stat-card.done .num{color:var(--success)}
+
+/* ── Tabs ── */
+.tabs{display:flex;gap:0;padding:4px 16px;position:sticky;top:52px;z-index:50;background:var(--bg)}
+.tab-btn{flex:1;padding:9px 0;text-align:center;font-size:14px;font-weight:600;color:var(--text3);border:none;background:transparent;cursor:pointer;border-bottom:2px solid transparent;transition:all .15s;min-height:40px}
+.tab-btn.active{color:var(--blue);border-bottom-color:var(--blue)}
+
+/* ── Kanban Board ── */
+.kanban{padding:8px 16px 16px;display:flex;gap:12px;overflow-x:auto;-webkit-overflow-scrolling:touch;scrollbar-width:none;min-height:200px}
+.kanban::-webkit-scrollbar{display:none}
+.column{min-width:280px;max-width:360px;flex:1;display:flex;flex-direction:column;gap:8px}
+.col-header{display:flex;align-items:center;justify-content:space-between;padding:8px 10px}
+.col-title{font-size:14px;font-weight:700;display:flex;align-items:center;gap:6px}
+.col-dot{width:10px;height:10px;border-radius:3px;flex-shrink:0}
+.col-count{font-size:12px;color:var(--text3);background:var(--border-lt);padding:2px 8px;border-radius:10px}
+.col-new{display:flex;align-items:center;justify-content:center;padding:12px;border:1.5px dashed var(--border);border-radius:var(--radius);color:var(--text3);font-size:13px;cursor:pointer;transition:all .15s;min-height:44px}
+.col-new:hover{color:var(--blue);border-color:var(--blue);background:var(--blue-bg)}
+
+/* ── Kanban Card ── */
+.kcard{background:var(--card);border-radius:var(--radius);box-shadow:var(--shadow-card);border:1px solid var(--border-lt);padding:12px;cursor:pointer;transition:all .15s}
+.kcard:hover{box-shadow:0 2px 8px rgba(0,0,0,.08)}
+.kcard.overdue{border-left:3px solid var(--danger)}
+.kcard.soon{border-left:3px solid var(--warn)}
+.kcard.paused{opacity:.6}
+.kcard-top{display:flex;align-items:flex-start;justify-content:space-between;gap:8px;margin-bottom:8px}
+.kcard-name{font-size:14px;font-weight:700;color:var(--text);line-height:1.4;flex:1;min-width:0}
+.kcard-prio{font-size:11px;font-weight:700;padding:2px 6px;border-radius:3px;flex-shrink:0}
+.kcard-prio.P0{background:#FEE2E2;color:#DC2626}
+.kcard-prio.P1{background:#FEF3C7;color:#D97706}
+.kcard-prio.P2{background:#F1F5F9;color:#64748B}
+.kcard-body{display:flex;flex-direction:column;gap:6px}
+.kcard-row{display:flex;align-items:center;gap:10px;font-size:12px;color:var(--text2)}
+.kcard-row svg{width:13px;height:13px;flex-shrink:0}
+.kcard-progress{display:flex;align-items:center;gap:8px}
+.kcard-progress-bar{flex:1;height:5px;background:var(--border-lt);border-radius:3px;overflow:hidden}
+.kcard-progress-fill{height:100%;border-radius:3px;transition:width .3s}
+.kcard-progress-txt{font-size:12px;font-weight:700;color:var(--text2);min-width:32px;text-align:right}
+/* milestone dots */
+.kcard-mstones{display:flex;gap:4px;flex-wrap:wrap;margin-top:4px}
+.mstone-dot{width:6px;height:6px;border-radius:50%;background:var(--warn)}
+.mstone-dot.done{background:var(--success)}
+.mstone-dot.future{background:var(--text3)}
+.kcard-date{font-size:11px;color:var(--text3);margin-top:2px}
+
+/* ── Detail Panel ── */
+.detail-overlay{position:fixed;inset:0;z-index:200;display:none;align-items:flex-end;justify-content:center}
+.detail-overlay.open{display:flex}
+.detail-backdrop{position:absolute;inset:0;background:rgba(0,0,0,.3)}
+.detail-panel{position:relative;width:100%;max-width:600px;max-height:88vh;background:var(--card);border-radius:16px 16px 0 0;overflow-y:auto;padding:20px;z-index:1}
+.detail-close{position:absolute;top:12px;right:12px;width:32px;height:32px;border-radius:50%;border:1px solid var(--border);background:var(--card);display:flex;align-items:center;justify-content:center;cursor:pointer;font-size:18px;color:var(--text2)}
+.detail-title{font-size:18px;font-weight:700;margin-bottom:14px;padding-right:40px}
+.detail-field{margin-bottom:12px}
+.detail-field label{display:block;font-size:12px;color:var(--text3);margin-bottom:3px}
+.detail-field .val{font-size:14px;color:var(--text);font-weight:600}
+.detail-progress{display:flex;align-items:center;gap:10px;margin:12px 0}
+.detail-progress-bar{flex:1;height:8px;background:var(--border-lt);border-radius:4px;overflow:hidden}
+.detail-progress-bar .fill{height:100%;border-radius:4px;transition:width .3s}
+.detail-progress-val{font-size:14px;font-weight:700}
+.detail-mstones{margin-top:8px}
+.detail-mstone{display:flex;align-items:center;gap:10px;padding:7px 0;border-bottom:1px solid var(--border-lt);font-size:13px}
+.detail-mstone .dot{width:10px;height:10px;border-radius:50%;background:var(--warn);flex-shrink:0}
+.detail-mstone .dot.past{background:var(--success)}
+.detail-mstone .dot.future{background:var(--text3)}
+.detail-actions{display:flex;gap:8px;margin-top:16px}
+
+/* ── Gantt ── */
+.gantt-wrap{padding:8px 16px;display:none}
+.gantt-wrap.active{display:block}
+.gantt-scroll{overflow-x:auto;-webkit-overflow-scrolling:touch;border-radius:var(--radius);background:var(--card);border:1px solid var(--border-lt)}
+.gantt-legend{display:flex;gap:16px;padding:6px 16px 10px}
+.gantt-legend span{display:flex;align-items:center;gap:5px;font-size:12px;color:var(--text2)}
+
+/* ── Task List ── */
+.task-wrap{padding:8px 16px;display:none}
+.task-wrap.active{display:block}
+.task-filter{display:flex;gap:6px;margin-bottom:10px;flex-wrap:wrap}
+.task-filter .chip{padding:5px 12px;border:1px solid var(--border);border-radius:14px;font-size:12px;cursor:pointer;color:var(--text2);transition:all .15s;min-height:32px}
+.task-filter .chip.active{background:var(--blue);color:#fff;border-color:var(--blue)}
+.task-card{background:var(--card);border-radius:var(--radius);box-shadow:var(--shadow);padding:12px;margin-bottom:8px;border:1px solid var(--border-lt)}
+.task-card.overdue{border-left:3px solid var(--danger)}
+.task-card .task-top{display:flex;align-items:flex-start;justify-content:space-between;gap:8px}
+.task-card .task-name{font-size:14px;font-weight:600;flex:1}
+.task-card .task-state{display:inline-flex;align-items:center;justify-content:center;width:24px;height:24px;border-radius:50%;border:2px solid var(--border);cursor:pointer;flex-shrink:0;transition:all .15s}
+.task-card .task-state.done{background:var(--success);border-color:var(--success)}
+.task-card .task-state.done::after{content:'';display:block;width:6px;height:10px;border:solid #fff;border-width:0 2px 2px 0;transform:rotate(45deg);margin-top:-2px}
+.task-card .task-meta{display:flex;flex-wrap:wrap;gap:8px;margin-top:6px;font-size:12px;color:var(--text2)}
+.task-card .task-project{font-size:12px;font-weight:600;margin-top:4px}
+
+/* ── Modal ── */
+.modal-overlay{position:fixed;inset:0;z-index:300;display:none;align-items:flex-end;justify-content:center}
+.modal-overlay.open{display:flex}
+.modal-backdrop{position:absolute;inset:0;background:rgba(0,0,0,.3)}
+.modal-box{position:relative;width:100%;max-width:560px;max-height:90vh;background:var(--card);border-radius:16px 16px 0 0;overflow-y:auto;padding:24px;z-index:1}
+.modal-box h3{font-size:17px;font-weight:700;margin-bottom:16px}
+.form-group{margin-bottom:12px}
+.form-group label{display:block;font-size:13px;font-weight:600;color:var(--text2);margin-bottom:4px}
+.form-group input,.form-group select,.form-group textarea{width:100%;padding:10px 12px;border:1px solid var(--border);border-radius:var(--radius-sm);background:var(--card);color:var(--text);outline:none;transition:all .15s}
+.form-group input:focus,.form-group select:focus,.form-group textarea:focus{border-color:var(--blue);box-shadow:0 0 0 3px var(--blue-lt)}
+.form-group textarea{resize:vertical;min-height:60px}
+.form-row{display:flex;gap:8px}
+.form-row .form-group{flex:1}
+.milestone-row{display:flex;gap:6px;align-items:center;margin-bottom:6px}
+.milestone-row input{flex:1}
+.milestone-row button{flex-shrink:0}
+.modal-footer{display:flex;gap:8px;margin-top:16px;justify-content:flex-end}
+
+/* ── Floating Button ── */
+.fab{position:fixed;bottom:calc(76px + env(safe-area-inset-bottom));right:16px;z-index:90;width:52px;height:52px;border-radius:50%;background:var(--blue);color:#fff;border:none;box-shadow:0 4px 12px rgba(37,99,235,.4);cursor:pointer;display:flex;align-items:center;justify-content:center;transition:all .2s}
+.fab:hover{transform:scale(1.05)}
+.fab svg{width:24px;height:24px}
+
+/* ── Bottom Nav (Mobile) ── */
+.bottom-nav{position:fixed;bottom:0;left:0;right:0;z-index:100;background:var(--card);border-top:1px solid var(--border);display:flex;padding-bottom:env(safe-area-inset-bottom)}
+.bottom-nav button{flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:3px;padding:8px 0;border:none;background:transparent;color:var(--text3);font-size:11px;font-weight:600;cursor:pointer;min-height:56px;transition:all .15s}
+.bottom-nav button.active{color:var(--blue)}
+.bottom-nav button svg{width:22px;height:22px}
+
+/* ── Stats View ── */
+.stats-cards{display:grid;grid-template-columns:repeat(auto-fill,minmax(100px,1fr));gap:8px;margin-bottom:4px}
+.scard{background:var(--card);border-radius:var(--radius);box-shadow:var(--shadow);padding:12px 10px;text-align:center;border:1px solid var(--border-lt)}
+.scard.done{border-color:rgba(16,185,129,.3);background:rgba(16,185,129,.04)}
+.scard.warn{border-color:rgba(245,158,11,.3);background:rgba(245,158,11,.04)}
+.scard.danger{border-color:rgba(239,68,68,.3);background:rgba(239,68,68,.04)}
+.scard-num{font-size:22px;font-weight:800;color:var(--text)}
+.scard-label{font-size:11px;color:var(--text3);margin-top:2px}
+
+.person-card{background:var(--card);border-radius:var(--radius);box-shadow:var(--shadow);padding:14px;margin-bottom:8px;border:1px solid var(--border-lt)}
+.person-top{display:flex;align-items:center;justify-content:space-between;margin-bottom:8px}
+.person-name{font-size:14px;font-weight:700;color:var(--text)}
+.person-rate{font-size:18px;font-weight:800}
+.person-bar-wrap{display:flex;height:8px;border-radius:4px;overflow:hidden;margin-bottom:8px}
+.person-bar{border-radius:0;transition:width .4s}
+.person-bar.pending{background:#CBD5E1}
+.person-bar.inprog{background:#F59E0B}
+.person-bar.done{background:#10B981}
+.person-stats{display:flex;gap:12px;font-size:12px;color:var(--text2);flex-wrap:wrap}
+
+.proj-stat-card{background:var(--card);border-radius:var(--radius);box-shadow:var(--shadow);padding:12px;margin-bottom:8px;border:1px solid var(--border-lt)}
+.proj-stat-top{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+.proj-stat-name{font-size:14px;font-weight:700;color:var(--text);flex:1;min-width:0}
+.proj-stat-cat{font-size:11px;font-weight:600;padding:2px 7px;border-radius:3px}
+
+@media(max-width:767px){
+  .stats-cards{grid-template-columns:repeat(3,1fr)}
+  .scard-num{font-size:18px}
+}
+/* ── Empty State ── */
+.empty{padding:32px 16px;text-align:center;color:var(--text3);font-size:14px}
+.empty svg{width:40px;height:40px;margin-bottom:8px;color:var(--text3)}
+
+/* ── Toast ── */
+.toast{position:fixed;bottom:calc(80px + env(safe-area-inset-bottom));left:50%;transform:translateX(-50%);z-index:400;padding:10px 20px;background:#0F172A;color:#fff;border-radius:20px;font-size:13px;font-weight:600;opacity:0;pointer-events:none;transition:opacity .3s}
+.toast.show{opacity:1}
+
+/* ── Sync Indicator ── */
+.sync-dot{width:8px;height:8px;border-radius:50%;display:inline-block;flex-shrink:0}
+.sync-offline{background:#DC2626}
+.sync-syncing{background:#F59E0B;animation:pulse 1s infinite}
+.sync-online{background:#16A34A}
+@keyframes pulse{0%,100%{opacity:1}50%{opacity:0.3}}
+
+/* ── Responsive: PC ── */
+@media(min-width:1024px){
+  .kanban{gap:16px;padding:12px 24px 20px}
+  .topbar{padding:10px 24px}
+  .tabs{padding:4px 24px}
+  .stats-row{padding:12px 24px 8px}
+  .column{min-width:300px;flex:1}
+  .fab{display:none}
+  .bottom-nav{display:none}
+  body{padding-bottom:0}
+  .detail-panel{border-radius:16px;margin:auto;max-height:80vh}
+  .modal-box{border-radius:16px;margin:auto;max-height:80vh}
+}
+
+/* ── Responsive: Tablet ── */
+@media(min-width:768px) and (max-width:1023px){
+  .kanban{gap:14px;padding:10px 20px 16px}
+  .topbar{padding:10px 20px}
+  .tabs{padding:4px 20px}
+  .stats-row{padding:10px 20px 8px}
+  .column{min-width:260px}
+}
+
+/* ── Responsive: Mobile ── */
+@media(max-width:767px){
+  .kanban{flex-direction:column;overflow-x:hidden;padding:8px 12px 16px}
+  .column{min-width:auto;max-width:none}
+  .tabs{padding:4px 12px}
+  .stats-row{padding:10px 12px 6px;gap:6px}
+  .topbar{padding:10px 12px}
+}
+
+/* ── Today Section (redesigned) ── */
+.today-wrap{padding:0 16px 8px;display:none}
+.today-card{background:var(--card);border-radius:var(--radius);border:1px solid var(--border-lt);overflow:hidden}
+.today-header{display:flex;align-items:center;justify-content:space-between;padding:10px 14px;cursor:pointer;user-select:none}
+.today-header-left{display:flex;align-items:center;gap:6px;font-size:13px;font-weight:700}
+.today-badge{font-size:11px;padding:1px 7px;border-radius:9px;color:#fff;min-width:18px;text-align:center}
+.today-arrow{transition:transform .2s}
+.today-header.open .today-arrow{transform:rotate(180deg)}
+.today-body{display:none;padding:0 12px 10px}
+.today-header.open+.today-body{display:block}
+.today-item{display:flex;align-items:center;gap:8px;padding:8px 10px;margin-bottom:5px;border-radius:6px;font-size:13px;border-left:3px solid transparent}
+.today-item.overdue{background:var(--danger-bg);border-left-color:var(--danger)}
+.today-item.tdy{background:#FFFBEB;border-left-color:var(--warn)}
+.today-item.soon{background:var(--blue-bg);border-left-color:var(--blue)}
+.today-item .td-tag{font-size:10px;font-weight:700;padding:2px 6px;border-radius:3px;white-space:nowrap;flex-shrink:0}
+.today-item .td-tag.overdue{background:#FEE2E2;color:var(--danger)}
+.today-item .td-tag.tdy{background:#FEF3C7;color:var(--amber)}
+.today-item .td-tag.soon{background:var(--blue-lt);color:var(--blue)}
+.today-item .td-info{flex:1;min-width:0}
+.today-item .td-name{font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.today-item .td-sub{font-size:11px;color:var(--text3);margin-top:1px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.today-item .td-btn{padding:4px 10px;border-radius:4px;border:1px solid var(--border);background:var(--card);font-size:11px;font-weight:600;cursor:pointer;white-space:nowrap;min-height:28px;color:var(--text2);transition:all .15s;flex-shrink:0}
+.today-item .td-btn:hover{background:var(--border-lt)}
+.today-item .td-btn.pri{background:var(--blue);color:#fff;border-color:var(--blue)}
+.today-actions{display:flex;gap:6px;padding:8px 0 0;border-top:1px solid var(--border-lt);margin-top:4px}
+.today-empty{padding:14px;text-align:center;color:var(--text3);font-size:13px}
+
+/* ── Workload ── */
+.wl-row{display:flex;align-items:center;gap:6px;margin-top:4px}
+.wl-bar{flex:1;height:4px;background:var(--border-lt);border-radius:2px;overflow:hidden;display:flex}
+.wl-fill{height:100%;border-radius:2px;background:var(--amber);transition:width .3s}
+.wl-txt{font-size:10px;color:var(--text3);white-space:nowrap}
+</style>
+</head>
+<body>
+
+<!-- ── Top Bar ── -->
+<div class="topbar">
+  <div class="topbar-title">
+    <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="var(--blue)" stroke-width="2"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/></svg>
+    图书馆研发工作台
+  </div>
+  <div class="topbar-actions">
+    <span id="syncDot" class="sync-dot sync-offline" title="本地存储" style="margin-right:2px"></span>
+    <button class="btn btn-ghost btn-sm" onclick="showBackendConfig()" title="配置后台服务器">后台</button>
+    <button class="btn btn-ghost btn-sm" id="btnClear" onclick="clearSample()" style="display:none">清空数据</button>
+    <button class="btn btn-ghost btn-sm" onclick="exportData()">导出</button>
+    <button class="btn btn-ghost btn-sm" onclick="document.getElementById('importFile').click()">导入</button>
+    <input type="file" id="importFile" accept=".json" style="display:none" onchange="importData(this)">
+  </div>
+</div>
+
+<!-- ── Stats ── -->
+<div class="stats-row" id="statsRow"></div>
+
+<!-- ── Today Section (redesigned) ── -->
+<div class="today-wrap" id="todayWrap">
+  <div class="today-card">
+    <div class="today-header open" onclick="var h=this;h.classList.toggle('open')">
+      <div class="today-header-left">
+        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>今日待处理
+        <span class="today-badge" id="todayBadge"></span>
+      </div>
+      <svg class="today-arrow" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="6 9 12 15 18 9"/></svg>
+    </div>
+    <div class="today-body" id="todayBody"></div>
+  </div>
+</div>
+
+<!-- ── Tabs ── -->
+<div class="tabs">
+  <button class="tab-btn active" onclick="switchTab('kanban')">看板</button>
+  <button class="tab-btn" onclick="switchTab('gantt')">甘特图</button>
+  <button class="tab-btn" onclick="switchTab('tasks')">任务</button>
+  <button class="tab-btn" onclick="switchTab('stats')">统计</button>
+</div>
+
+<!-- ── Kanban Board ── -->
+<div class="kanban" id="kanban">
+  <!-- col-new -->
+  <div class="column" id="col-new">
+    <div class="col-header">
+      <div class="col-title"><span class="col-dot" style="background:var(--blue)"></span>新产品开发</div>
+      <span class="col-count" id="cnt-new">0</span>
+    </div>
+    <div id="cards-new"></div>
+    <div class="col-new" onclick="openProjectModal(null,'新产品开发')">+ 新建项目</div>
+  </div>
+  <!-- col-opt -->
+  <div class="column" id="col-opt">
+    <div class="col-header">
+      <div class="col-title"><span class="col-dot" style="background:var(--teal)"></span>老产品优化</div>
+      <span class="col-count" id="cnt-opt">0</span>
+    </div>
+    <div id="cards-opt"></div>
+    <div class="col-new" onclick="openProjectModal(null,'老产品优化')">+ 新建项目</div>
+  </div>
+  <!-- col-custom -->
+  <div class="column" id="col-custom">
+    <div class="col-header">
+      <div class="col-title"><span class="col-dot" style="background:var(--amber)"></span>非标项目</div>
+      <span class="col-count" id="cnt-custom">0</span>
+    </div>
+    <div id="cards-custom"></div>
+    <div class="col-new" onclick="openProjectModal(null,'非标项目')">+ 新建项目</div>
+  </div>
+</div>
+
+<!-- ── Gantt ── -->
+<div class="gantt-wrap" id="ganttWrap">
+  <div class="gantt-legend">
+    <span><span class="col-dot" style="background:var(--blue)"></span>新产品开发</span>
+    <span><span class="col-dot" style="background:var(--teal)"></span>老产品优化</span>
+    <span><span class="col-dot" style="background:var(--amber)"></span>非标项目</span>
+  </div>
+  <div class="gantt-scroll" id="ganttSvg"></div>
+</div>
+
+<!-- ── Task List ── -->
+<div class="task-wrap" id="taskWrap">
+  <div class="task-filter" id="taskFilter">
+    <button class="chip active" onclick="setTaskFilter('all')">全部</button>
+    <button class="chip" onclick="setTaskFilter('待开始')">待开始</button>
+    <button class="chip" onclick="setTaskFilter('进行中')">进行中</button>
+    <button class="chip" onclick="setTaskFilter('已完成')">已完成</button>
+  </div>
+  <div class="task-filter" id="taskNameFilter" style="margin-bottom:10px"></div>
+  <div id="taskList"></div>
+</div>
+
+<!-- ── Stats View ── -->
+<div class="stats-view" id="statsView" style="display:none;padding:12px 16px 80px">
+  <div id="statsContent"></div>
+</div>
+
+<!-- ── Floating Action Button (mobile) ── -->
+<button class="fab" onclick="showQuickMenu()" id="fabBtn">
+  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+</button>
+
+<!-- ── Bottom Nav (mobile) ── -->
+<div class="bottom-nav">
+  <button class="active" id="bn-kanban" onclick="switchTab('kanban')">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/></svg>
+    看板
+  </button>
+  <button id="bn-gantt" onclick="switchTab('gantt')">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="8" height="5" rx="1"/><rect x="15" y="12" width="6" height="5" rx="1"/><rect x="6" y="17" width="10" height="4" rx="1"/></svg>
+    甘特图
+  </button>
+  <button id="bn-tasks" onclick="switchTab('tasks')">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 11l3 3L22 4"/><path d="M21 12v7a2 2 0 01-2 2H5a2 2 0 01-2-2V5a2 2 0 012-2h11"/></svg>
+    任务
+  </button>
+  <button id="bn-stats" onclick="switchTab('stats')">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="20" x2="18" y2="10"/><line x1="12" y1="20" x2="12" y2="4"/><line x1="6" y1="20" x2="6" y2="14"/></svg>
+    统计
+  </button>
+</div>
+
+<!-- ── Detail Panel ── -->
+<div class="detail-overlay" id="detailOverlay">
+  <div class="detail-backdrop" onclick="closeDetail()"></div>
+  <div class="detail-panel" id="detailPanel"></div>
+</div>
+
+<!-- ── Modal ── -->
+<div class="modal-overlay" id="modalOverlay">
+  <div class="modal-backdrop" onclick="closeModal()"></div>
+  <div class="modal-box" id="modalBox"></div>
+</div>
+
+<!-- ── Toast ── -->
+<div class="toast" id="toast"></div>
+
+<script>
+// ═══════════════════ DATA ═══════════════════
+var DATA_VERSION=2;
+var LS_PROJ='wb_lib_proj_v2', LS_TASK='wb_lib_task_v2', LS_VER='wb_lib_ver';
+var projects=[], tasks=[], currentTab='kanban', taskFilter='all', taskNameFilter='all';
+var editingProjId=null, editingMilestones=[], _autoSaveTimer=null;
+var _syncStatus='offline', _syncTimer=null;
+
+// 保存到 localStorage
+function saveLocal(){
+  localStorage.setItem(LS_PROJ,JSON.stringify(projects));
+  localStorage.setItem(LS_TASK,JSON.stringify(tasks));
+  localStorage.setItem(LS_VER,String(DATA_VERSION));
+}
+
+// 保存：本地 + 服务端双写
+// immediate=true 时立即推送（删除/保存等关键操作），否则 2 秒防抖
+function saveData(immediate){
+  saveLocal();
+  if(immediate) _pushToServer();
+  else scheduleServerSync();
+}
+
+// 加载本地数据（秒开）
+function loadData(){
+  var p=localStorage.getItem(LS_PROJ), t=localStorage.getItem(LS_TASK), v=localStorage.getItem(LS_VER);
+  if(p) projects=JSON.parse(p); if(t) tasks=JSON.parse(t);
+  // 版本迁移：V1 → V2，为旧项目补上 workDays 字段
+  var oldVer=parseInt(v)||1;
+  if(oldVer<2){
+    projects.forEach(function(pr){
+      if(pr.workDaysPlanned===undefined) pr.workDaysPlanned=0;
+      if(pr.workDaysUsed===undefined) pr.workDaysUsed=0;
+    });
+    saveData();
+  }
+}
+
+// ═══════════════════ API 同步 ═══════════════════
+// 自动检测后端是否在线；离线时仅使用 localStorage
+// 用户可手动配置后台地址以便多设备共享数据
+
+var _serverOnline = false;
+var _serverUrl = localStorage.getItem('wb_lib_server') || 'http://localhost:3000';
+
+function getServerUrl(){ return _serverUrl; }
+
+// 启动时探测后端是否可用
+function probeServer(callback){
+  var url = getServerUrl() + '/api/health';
+  fetch(url, {method:'GET',cache:'no-cache'})
+    .then(function(r){ if(!r.ok) throw new Error(); return r.json(); })
+    .then(function(){
+      _serverOnline = true;
+      _setSyncStatus('online');
+      console.log('[backend] 已连接');
+      if(callback) callback(true);
+    })
+    .catch(function(){
+      _serverOnline = false;
+      _setSyncStatus('offline');
+      console.log('[backend] 未连接，使用本地存储');
+      if(callback) callback(false);
+    });
+}
+
+// 从服务端拉取数据（服务端优先）
+function syncFromServer(callback){
+  if(!_serverOnline){ if(callback) callback(false); return; }
+  _setSyncStatus('syncing');
+  fetch(getServerUrl()+'/api/data', {method:'GET',cache:'no-cache'})
+    .then(function(r){ if(!r.ok) throw new Error(); return r.json(); })
+    .then(function(data){
+      if(data.projects && data.tasks){
+        projects = data.projects;
+        tasks = data.tasks;
+        saveLocal();
+        _setSyncStatus('online');
+      }
+      if(callback) callback(true);
+    })
+    .catch(function(){
+      _serverOnline = false;
+      _setSyncStatus('offline');
+      if(callback) callback(false);
+    });
+}
+
+// 防抖推送到服务端
+function scheduleServerSync(){
+  if(!_serverOnline) return;
+  if(_syncTimer) clearTimeout(_syncTimer);
+  _syncTimer = setTimeout(function(){ _pushToServer(); }, 2000);
+}
+
+function _pushToServer(){
+  if(!_serverOnline) return;
+  _setSyncStatus('syncing');
+  fetch(getServerUrl()+'/api/data', {
+    method:'POST',
+    headers:{'Content-Type':'application/json'},
+    body:JSON.stringify({projects:projects, tasks:tasks})
+  })
+  .then(function(r){ if(!r.ok) throw new Error(); return r.json(); })
+  .then(function(){ _setSyncStatus('online'); })
+  .catch(function(){ _serverOnline=false; _setSyncStatus('offline'); });
+}
+
+function forceSync(){
+  if(!_serverOnline){ toast('后端未连接，请先配置后台地址'); showBackendConfig(); return; }
+  toast('正在同步...');
+  syncFromServer(function(ok){
+    renderAll();
+    toast(ok?'同步完成 ✓':'同步失败');
+  });
+}
+
+// 后台地址配置弹窗
+function showBackendConfig(){
+  var url = prompt('请输入后台服务地址：\n\n例如：http://192.168.1.100:3000\n或：https://your-server.com\n\n留空则仅使用本地存储。', _serverUrl || '');
+  if(url===null) return; // 取消
+  url = url.trim().replace(/\/+$/,'');
+  if(url){
+    localStorage.setItem('wb_lib_server', url);
+    _serverUrl = url;
+    _serverOnline = false;
+    toast('正在连接后台...');
+    probeServer(function(ok){
+      if(ok){
+        toast('后台已连接 ✓');
+        syncFromServer(function(){ renderAll(); });
+      } else {
+        toast('无法连接后台，请检查地址');
+      }
+    });
+  } else {
+    localStorage.removeItem('wb_lib_server');
+    _serverUrl = '';
+    _serverOnline = false;
+    _setSyncStatus('offline');
+    toast('已切换为本地存储模式');
+  }
+}
+
+function _setSyncStatus(s){
+  _syncStatus = s;
+  var el = document.getElementById('syncDot');
+  if(!el) return;
+  el.className = 'sync-dot sync-'+s;
+  var labels = {online:'已同步到后台',syncing:'同步中',offline:'本地存储'};
+  el.title = labels[s] || '';
+}
+
+// 自动保存：表单输入时 1.5 秒后自动写入 localStorage（仅备份草稿，不触发 UI 刷新）
+function scheduleAutoSave(){ clearTimeout(_autoSaveTimer); _autoSaveTimer=setTimeout(autoSaveDraft,1500); }
+function autoSaveDraft(){
+  // 收集模态框表单数据
+  var nameEl=document.getElementById('modPName');
+  if(!nameEl) return; // 模态框未打开
+  // 同步里程碑输入
+  syncMilestonesSilent();
+  var draft={
+    version:DATA_VERSION,
+    name:(nameEl.value||'').trim(),
+    category:(document.getElementById('modPCat')||{}).value||'',
+    status:(document.getElementById('modPStatus')||{}).value||'',
+    priority:(document.getElementById('modPPrio')||{}).value||'',
+    owner:(document.getElementById('modPOwner')||{}).value||'',
+    startDate:(document.getElementById('modPStart')||{}).value||'',
+    endDate:(document.getElementById('modPEnd')||{}).value||'',
+    progress:parseInt((document.getElementById('modPProg')||{}).value)||0,
+    desc:(document.getElementById('modPDesc')||{}).value||'',
+    workDaysPlanned:parseInt((document.getElementById('modPWPlan')||{}).value)||0,
+    workDaysUsed:parseInt((document.getElementById('modPWUsed')||{}).value)||0,
+    milestones:editingMilestones
+  };
+  // 如果正在编辑已有项目，则实时更新到数组
+  if(editingProjId){
+    var idx=projects.findIndex(function(x){return x.id===editingProjId;});
+    if(idx>=0){ draft.id=editingProjId; projects[idx]=draft; saveLocal(); scheduleServerSync(); }
+  }
+  // 草稿存到单独的 key
+  localStorage.setItem('wb_lib_draft',JSON.stringify({editingProjId:editingProjId,data:draft,timestamp:Date.now()}));
+}
+
+function syncMilestonesSilent(){
+  try{
+    document.querySelectorAll('#modMilestones input').forEach(function(inp){
+      var i=parseInt(inp.dataset.mi), field=inp.dataset.field;
+      if(!isNaN(i) && editingMilestones[i]) editingMilestones[i][field]=inp.value;
+    });
+  }catch(e){}
+}
+
+function genId(){ return 'id_'+Date.now()+'_'+Math.random().toString(36).substr(2,6); }
+function todayStr(){ var d=new Date(); return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0'); }
+function parseDate(s){ var p=s.split('-'); return new Date(+p[0],+p[1]-1,+p[2]); }
+function daysUntil(s){ if(!s) return 9999; var t=new Date(); t.setHours(0,0,0,0); var d=parseDate(s); if(isNaN(d.getTime())) return 9999; return Math.ceil((d-t)/(1000*60*60*24)); }
+function fmtDate(d){ return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0'); }
+function addDays(d,n){ var x=new Date(d); x.setDate(x.getDate()+n); return x; }
+function es(s){ if(!s) return ''; return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }
+function esc(s){ return (s||'').replace(/\\/g,'\\\\').replace(/'/g,"\\'"); }
+
+/* ── Sample ── */
+function initSample(){
+  var today=new Date();
+  projects=[{
+    id:genId(),name:'市中心图书馆 RFID 智能馆系统',category:'新产品开发',status:'进行中',priority:'P0',
+    owner:'张三',startDate:fmtDate(addDays(today,-30)),endDate:fmtDate(addDays(today,50)),progress:40,
+    workDaysPlanned:65,workDaysUsed:26,
+    desc:'含自助借还、智能书架、盘点机器人、安防门禁，覆盖3层8000㎡',
+    milestones:[
+      {name:'需求评审',date:fmtDate(addDays(today,-15))},
+      {name:'方案确认',date:fmtDate(addDays(today,-2))},
+      {name:'设备联调',date:fmtDate(addDays(today,25))},
+      {name:'验收交付',date:fmtDate(addDays(today,50))}
+    ]
+  }];
+  tasks=[{
+    id:genId(),name:'RFID设备选型对比报告',projectId:projects[0].id,status:'已完成',priority:'P0',assignee:'张三',dueDate:fmtDate(addDays(today,-10))
+  },{
+    id:genId(),name:'OPAC检索SQL优化(已逾期)',projectId:projects[0].id,status:'进行中',priority:'P0',assignee:'王五',dueDate:fmtDate(addDays(today,-3))
+  },{
+    id:genId(),name:'数据库慢查询整改',projectId:projects[0].id,status:'待开始',priority:'P1',assignee:'王五',dueDate:fmtDate(addDays(today,2))
+  },{
+    id:genId(),name:'数字阅读平台UI评审',projectId:projects[0].id,status:'待开始',priority:'P1',assignee:'李四',dueDate:fmtDate(addDays(today,5))
+  }];
+  saveData();
+}
+
+/* ── Init ── */
+loadData();
+if(projects.length===0) initSample();
+renderAll();
+// 探测后端是否在线
+probeServer(function(online){
+  if(online) syncFromServer(function(){ renderAll(); });
+});
+
+// ═══════════════════ RENDER ═══════════════════
+function renderAll(){
+  // 更新清空按钮：有数据时显示红色"清空数据"，无数据时隐藏
+  var btn=document.getElementById('btnClear');
+  if(btn){
+    if(projects.length===0 && tasks.length===0){ btn.style.display='none'; }
+    else { btn.style.display=''; btn.textContent='清空数据'; btn.style.color='var(--danger)'; }
+  }
+  renderStats();
+  renderToday();
+  renderKanban();
+  if(currentTab==='gantt') renderGantt();
+  if(currentTab==='tasks') renderTasks();
+}
+
+/* ── Stats ── */
+function renderStats(){
+  var today=new Date(); today.setHours(0,0,0,0);
+  var total=projects.length, active=0, overdue=0, done=0;
+  var totalPlanned=0, totalUsed=0;
+  projects.forEach(function(p){
+    if(p.status==='已交付') done++;
+    else active++;
+    if(daysUntil(p.endDate)<0 && p.status!=='已交付' && p.status!=='已暂停') overdue++;
+    totalPlanned+=(p.workDaysPlanned||0);
+    totalUsed+=(p.workDaysUsed||0);
+  });
+  var taskTotal=tasks.length, taskDone=tasks.filter(function(t){return t.status==='已完成'}).length;
+  var taskRate=taskTotal?Math.round(taskDone/taskTotal*100):0;
+  var workPct=totalPlanned?Math.round(totalUsed/totalPlanned*100):0;
+
+  document.getElementById('statsRow').innerHTML=
+    '<div class="stat-card"><div class="num">'+total+'</div><div class="label">项目总数</div></div>'+
+    '<div class="stat-card active"><div class="num">'+active+'</div><div class="label">进行中</div></div>'+
+    '<div class="stat-card done"><div class="num">'+done+'</div><div class="label">已交付</div></div>'+
+    '<div class="stat-card danger"><div class="num">'+overdue+'</div><div class="label">已逾期</div></div>'+
+    '<div class="stat-card"><div class="num">'+taskRate+'%</div><div class="label">任务完成率</div></div>'+
+    '<div class="stat-card"><div class="num">'+workPct+'%</div><div class="label">工作量消耗</div></div>';
+}
+
+/* ── Today (redesigned) ── */
+function renderToday(){
+  var today=new Date(); today.setHours(0,0,0,0);
+  var dueTasks=[]; // 逾期/今天/3天内任务
+  var dueMstones=[]; // 逾期节点
+
+  tasks.forEach(function(t){
+    if(t.status==='已完成') return;
+    var dues=daysUntil(t.dueDate);
+    if(isNaN(dues)||dues>3) return;
+    var p=projects.find(function(x){return x.id===t.projectId;});
+    var type=dues<0?'overdue':dues===0?'today':'soon';
+    dueTasks.push({task:t,project:p,type:type,days:dues});
+  });
+
+  projects.forEach(function(p){
+    if(p.status==='已交付'||p.status==='已暂停'||!p.milestones) return;
+    p.milestones.forEach(function(m){
+      var dues=daysUntil(m.date);
+      if(isNaN(dues)||dues>=0) return; // 只看逾期的节点
+      dueMstones.push({project:p,milestone:m,days:dues});
+    });
+  });
+
+  // 排序：逾期任务 → 逾期节点 → 今天到期 → 即将到期
+  dueTasks.sort(function(a,b){return a.days-b.days;});
+  dueMstones.sort(function(a,b){return a.days-b.days;});
+
+  var total=dueTasks.length+dueMstones.length;
+  var wrap=document.getElementById('todayWrap');
+  var badge=document.getElementById('todayBadge');
+  var body=document.getElementById('todayBody');
+  var hasOverdue=dueTasks.some(function(u){return u.type==='overdue';})||dueMstones.length>0;
+
+  if(total===0){ wrap.style.display='none'; return; }
+  wrap.style.display='block';
+  badge.textContent=total;
+  badge.style.background=hasOverdue?'var(--danger)':'var(--warn)';
+
+  var h='';
+
+  // ── 逾期任务 ──
+  dueTasks.filter(function(u){return u.type==='overdue';}).forEach(function(u){
+    var pname=u.project?u.project.name:'';
+    h+=itemHTML('overdue','逾期 '+Math.abs(u.days)+'天',u.task.name,pname,u.task.assignee||'',true,u.task.id);
+  });
+
+  // ── 逾期节点 ──
+  dueMstones.forEach(function(u){
+    var pname=u.project?u.project.name:'';
+    h+=itemHTML('overdue','节点逾期 '+Math.abs(u.days)+'天',u.milestone.name,pname,u.milestone.date,false,null,u.project?u.project.id:null,true);
+  });
+
+  // ── 今天到期 ──
+  dueTasks.filter(function(u){return u.type==='today';}).forEach(function(u){
+    var pname=u.project?u.project.name:'';
+    h+=itemHTML('today','今天到期',u.task.name,pname,u.task.assignee||'',true,u.task.id);
+  });
+
+  // ── 即将到期 ──
+  dueTasks.filter(function(u){return u.type==='soon';}).forEach(function(u){
+    var pname=u.project?u.project.name:'';
+    h+=itemHTML('soon',u.days+'天后',u.task.name,pname,u.task.assignee||'',true,u.task.id);
+  });
+
+  // ── 一键完成所有逾期任务 ──
+  var overdueTaskIds=dueTasks.filter(function(u){return u.type==='overdue'&&u.task;}).map(function(u){return u.task.id;});
+  if(overdueTaskIds.length>=2){
+    h+='<div class="today-actions"><button class="td-btn pri" onclick="batchComplete(['+overdueTaskIds.map(function(id){return"'"+id+"'";}).join(',')+'])">一键完成全部逾期任务 ('+overdueTaskIds.length+')</button></div>';
+  }
+
+  if(h==='') h='<div class="today-empty">暂无待处理项 ✓</div>';
+  body.innerHTML=h;
+}
+
+function itemHTML(type,label,name,projectName,subText,showComplete,taskId,projId,isMilestone){
+  var cls='today-item '+type;
+  var h='<div class="'+cls+'">'+
+    '<span class="td-tag '+type+'">'+label+'</span>'+
+    '<div class="td-info">'+
+      '<div class="td-name">'+es(name)+'</div>'+
+      '<div class="td-sub">'+(projectName?'['+es(projectName.length>12?projectName.substr(0,12)+'…':projectName)+']':'')+(subText?' · '+es(subText):'')+'</div>'+
+    '</div>';
+  if(showComplete && taskId){
+    h+='<button class="td-btn pri" onclick="event.stopPropagation();toggleTask(\''+taskId+'\')">完成</button>';
+  } else if(isMilestone && projId){
+    h+='<button class="td-btn" onclick="event.stopPropagation();showDetail(\''+projId+'\')">查看</button>';
+  }
+  h+='</div>';
+  return h;
+}
+
+function batchComplete(ids){
+  ids.forEach(function(tid){
+    var t=tasks.find(function(x){return x.id===tid;});
+    if(t) t.status='已完成';
+  });
+  saveData(true); renderAll(); toast('已批量完成 '+ids.length+' 项');
+}
+
+/* ── Kanban ── */
+function renderKanban(){
+  var cats={'新产品开发':[],'老产品优化':[],'非标项目':[]};
+  projects.forEach(function(p){ if(cats[p.category]) cats[p.category].push(p); });
+
+  var today=new Date(); today.setHours(0,0,0,0);
+
+  function cardHTML(p){
+    var dues=daysUntil(p.endDate);
+    var cls='kcard';
+    if(dues<0 && p.status!=='已交付' && p.status!=='已暂停') cls+=' overdue';
+    else if(dues>=0 && dues<=7 && p.status!=='已交付') cls+=' soon';
+    if(p.status==='已暂停') cls+=' paused';
+    var taskCount=tasks.filter(function(t){return t.projectId===p.id;}).length;
+    var taskDone=tasks.filter(function(t){return t.projectId===p.id && t.status==='已完成'}).length;
+    var barColor=p.category==='新产品开发'?'var(--blue)':p.category==='老产品优化'?'var(--teal)':'var(--amber)';
+
+    var h='<div class="'+cls+'" onclick="showDetail(\''+p.id+'\')">'+
+      '<div class="kcard-top">'+
+        '<div class="kcard-name">'+es(p.name)+'</div>'+
+        '<span class="kcard-prio '+p.priority+'">'+p.priority+'</span>'+
+      '</div>'+
+      '<div class="kcard-body">'+
+        '<div class="kcard-row"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M20 21v-2a4 4 0 00-4-4H8a4 4 0 00-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>'+es(p.owner||'未分配')+'</div>';
+
+    if(taskCount>0){
+      h+='<div class="kcard-row"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 11l3 3L22 4"/><path d="M21 12v7a2 2 0 01-2 2H5a2 2 0 01-2-2V5a2 2 0 012-2h11"/></svg>'+taskDone+'/'+taskCount+' 任务</div>';
+    }
+    h+='<div class="kcard-progress"><div class="kcard-progress-bar"><div class="kcard-progress-fill" style="width:'+p.progress+'%;background:'+barColor+'"></div></div><span class="kcard-progress-txt">'+p.progress+'%</span></div>';
+    // workload bar
+    if(p.workDaysPlanned>0){
+      var wlPct=Math.min(100,Math.round((p.workDaysUsed||0)/p.workDaysPlanned*100));
+      h+='<div class="wl-row"><span class="wl-txt">工时 '+p.workDaysUsed+'/'+p.workDaysPlanned+'天</span><div class="wl-bar"><div class="wl-fill" style="width:'+wlPct+'%"></div></div></div>';
+    }
+
+    // milestone dots
+    if(p.milestones && p.milestones.length>0){
+      h+='<div class="kcard-mstones">';
+      p.milestones.forEach(function(m){
+        var md=parseDate(m.date), cls2='future'; if(md<today) cls2='done';
+        h+='<span class="mstone-dot '+cls2+'" title="'+es(m.name)+' '+m.date+'"></span>';
+      });
+      h+='</div>';
+    }
+    h+='<div class="kcard-date">'+p.startDate+' ~ '+p.endDate+'</div>';
+    h+='</div></div>';
+    return h;
+  }
+
+  function renderCol(key, catName, cntId, cardsId){
+    var list=cats[catName];
+    document.getElementById(cntId).textContent=list.length;
+    var html='';
+    list.forEach(function(p){ html+=cardHTML(p); });
+    if(list.length===0) html='<div class="empty"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg><p>暂无项目</p></div>';
+    document.getElementById(cardsId).innerHTML=html;
+  }
+
+  renderCol('新产品开发','新产品开发','cnt-new','cards-new');
+  renderCol('老产品优化','老产品优化','cnt-opt','cards-opt');
+  renderCol('非标项目','非标项目','cnt-custom','cards-custom');
+}
+
+/* ── Detail Panel ── */
+function showDetail(pid){
+  var p=projects.find(function(x){return x.id===pid;}); if(!p) return;
+  var today=new Date(); today.setHours(0,0,0,0);
+  var taskList=tasks.filter(function(t){return t.projectId===pid;});
+  var barColor=p.category==='新产品开发'?'var(--blue)':p.category==='老产品优化'?'var(--teal)':'var(--amber)';
+
+  var h='<button class="detail-close" onclick="closeDetail()">×</button>'+
+    '<div class="detail-title">'+es(p.name)+'</div>'+
+    '<div class="detail-field"><label>分类</label><div class="val">'+p.category+' · <span style="color:#6B7280;font-weight:400">'+p.priority+'</span></div></div>'+
+    '<div class="detail-field"><label>负责人</label><div class="val">'+es(p.owner||'未分配')+'</div></div>'+
+    '<div class="detail-field"><label>时间</label><div class="val" style="font-size:13px">'+p.startDate+' ~ '+p.endDate+'</div></div>'+
+    '<div class="detail-field"><label>进度</label>'+
+    '<div class="detail-progress"><div class="detail-progress-bar"><div class="fill" style="width:'+p.progress+'%;background:'+barColor+'"></div></div><span class="detail-progress-val">'+p.progress+'%</span></div></div>'+
+    '<div class="detail-field"><label>工作量</label><div class="val" style="font-size:13px">'+
+      '计划工作日：<b>'+(p.workDaysPlanned||0)+'天</b> &nbsp; 已用工作日：<b style="color:'+((p.workDaysUsed||0)>(p.workDaysPlanned||1)?'var(--danger)':'var(--text)')+'">'+(p.workDaysUsed||0)+'天</b>'+
+      (p.workDaysPlanned>0?' &nbsp; (消耗 '+Math.round((p.workDaysUsed||0)/p.workDaysPlanned*100)+'%)':'')+
+    '</div></div>';
+
+  if(p.desc){
+    h+='<div class="detail-field"><label>描述</label><div class="val" style="font-weight:400;font-size:13px;color:var(--text2)">'+es(p.desc)+'</div></div>';
+  }
+
+  if(p.milestones && p.milestones.length>0){
+    h+='<div class="detail-field"><label>关键节点</label><div class="detail-mstones">';
+    p.milestones.forEach(function(m){
+      var md=parseDate(m.date), cls2='future'; if(md<today) cls2='past';
+      h+='<div class="detail-mstone"><span class="dot '+cls2+'"></span><span>'+es(m.name)+'</span><span style="color:var(--text3);font-size:12px;margin-left:auto">'+m.date+'</span></div>';
+    });
+    h+='</div></div>';
+  }
+
+  if(taskList.length>0){
+    h+='<div class="detail-field"><label>关联任务 ('+taskList.length+')</label>';
+    taskList.forEach(function(t){
+      var done=t.status==='已完成'?' done':'';
+      h+='<div class="task-card'+(daysUntil(t.dueDate)<0&&t.status!=='已完成'?' overdue':'')+'">'+
+        '<div class="task-top"><span class="task-name" style="font-size:13px">'+es(t.name)+'</span>'+
+        '<span class="task-state'+done+'" onclick="event.stopPropagation();toggleTask(\''+t.id+'\')"></span></div>'+
+        '<div class="task-meta"><span>'+es(t.assignee||'')+'</span><span>'+t.dueDate+'</span><span style="color:var(--text3)">'+t.status+'</span></div></div>';
+    });
+    h+='</div>';
+  }
+
+  h+='<div class="detail-actions">'+
+    '<button class="btn btn-primary" onclick="closeDetail();openProjectModal(\''+pid+'\')">编辑项目</button>'+
+    '<button class="btn" onclick="closeDetail();openTaskModal(null,\''+pid+'\')">添加任务</button>'+
+    '<button class="btn" style="color:var(--danger)" onclick="confirmDeleteProject(\''+pid+'\',\''+esc(p.name)+'\')">删除</button>'+
+  '</div>';
+
+  document.getElementById('detailPanel').innerHTML=h;
+  document.getElementById('detailOverlay').classList.add('open');
+}
+
+function closeDetail(){ document.getElementById('detailOverlay').classList.remove('open'); }
+
+function deleteProject(pid){
+  projects=projects.filter(function(p){return p.id!==pid;});
+  tasks=tasks.filter(function(t){return t.projectId!==pid;});
+  saveData(true); renderAll(); toast('项目已删除');
+}
+
+function confirmDeleteProject(pid, pname){
+  if(!confirm('确定删除项目「'+pname+'」及其所有任务？\n此操作不可撤销。')) return;
+  closeDetail();
+  closeModal();
+  deleteProject(pid);
+}
+
+function confirmDeleteProjectInModal(pid){
+  if(!confirm('确定删除此项目及其所有任务？\n此操作不可撤销。')) return;
+  closeModal();
+  deleteProject(pid);
+}
+
+function confirmDeleteTask(tid){
+  if(!confirm('确定删除此任务？')) return;
+  tasks=tasks.filter(function(x){return x.id!==tid;});
+  closeModal(); saveData(true); renderAll(); toast('已删除');
+}
+
+/* ── Gantt Chart ── */
+function renderGantt(){
+  var active=projects.filter(function(p){return p.status!=='已交付';});
+  if(active.length===0){
+    document.getElementById('ganttSvg').innerHTML='<div class="empty">暂无进行中项目</div>'; return;
+  }
+
+  var catFill={'新产品开发':'#2563EB','老产品优化':'#0D9488','非标项目':'#D97706'};
+  var today=new Date(); today.setHours(0,0,0,0);
+  var dates=[]; active.forEach(function(p){ dates.push(parseDate(p.startDate)); dates.push(parseDate(p.endDate)); });
+  var minD=new Date(Math.min.apply(null,dates)); minD.setDate(minD.getDate()-7);
+  var maxD=new Date(Math.max.apply(null,dates)); maxD.setDate(maxD.getDate()+7);
+  var totalDays=Math.ceil((maxD-minD)/(1000*60*60*24));
+
+  var labelW=120, colH=36, headerH=36;
+  var dayW=Math.max(5,Math.min(16,Math.floor((window.innerWidth-labelW-32)/totalDays)));
+  var chartW=totalDays*dayW, svgW=labelW+chartW+10, svgH=headerH+active.length*colH+10;
+
+  var svg='<svg viewBox="0 0 '+svgW+' '+svgH+'" width="'+svgW+'" height="'+svgH+'">';
+  svg+='<rect width="'+svgW+'" height="'+svgH+'" fill="#fff"/>';
+
+  // Header
+  svg+='<rect x="0" y="0" width="'+svgW+'" height="'+headerH+'" fill="#F8FAFC"/>';
+  svg+='<line x1="0" y1="'+headerH+'" x2="'+svgW+'" y2="'+headerH+'" stroke="#E2E8F0"/>';
+
+  // Month labels
+  var curM=-1;
+  for(var d=0;d<totalDays;d++){
+    var dd=new Date(minD); dd.setDate(dd.getDate()+d);
+    if(dd.getMonth()!==curM){
+      curM=dd.getMonth();
+      var mx=labelW+d*dayW;
+      svg+='<text x="'+(mx+2)+'" y="'+(headerH-16)+'" font-size="10" fill="#94A3B8" font-family="sans-serif">'+(dd.getMonth()+1)+'月</text>';
+      svg+='<line x1="'+mx+'" y1="'+headerH+'" x2="'+mx+'" y2="'+svgH+'" stroke="#F1F5F9" stroke-width="1"/>';
+    }
+  }
+
+  // Today
+  var todayX=labelW+Math.round((today-minD)/(1000*60*60*24))*dayW;
+  if(todayX>=labelW && todayX<svgW){
+    svg+='<line x1="'+todayX+'" y1="'+headerH+'" x2="'+todayX+'" y2="'+svgH+'" stroke="#EF4444" stroke-width="1.5" stroke-dasharray="4,3"/>';
+    svg+='<rect x="'+(todayX-14)+'" y="'+(headerH-14)+'" width="28" height="12" rx="3" fill="#EF4444"/>';
+    svg+='<text x="'+todayX+'" y="'+(headerH-4)+'" font-size="9" fill="#fff" text-anchor="middle" font-family="sans-serif" font-weight="700">今天</text>';
+  }
+
+  active.forEach(function(p,ri){
+    var y=headerH+ri*colH, barY=y+7, barH=colH-14;
+    var sd=parseDate(p.startDate), ed=parseDate(p.endDate);
+    var sx=labelW+Math.round((sd-minD)/(1000*60*60*24))*dayW;
+    var ex=labelW+Math.round((ed-minD)/(1000*60*60*24))*dayW+dayW;
+    var bw=Math.max(ex-sx,dayW); var fill=catFill[p.category]||'#2563EB';
+    var opacity=p.status==='已暂停'?0.4:1;
+
+    svg+='<text x="6" y="'+(y+colH/2+4)+'" font-size="11" fill="#0F172A" font-family="sans-serif" font-weight="600">'+es(p.name.length>10?p.name.substr(0,10)+'…':p.name)+'</text>';
+    svg+='<rect x="'+sx+'" y="'+barY+'" width="'+bw+'" height="'+barH+'" rx="4" fill="'+fill+'" fill-opacity="0.15" opacity="'+opacity+'"/>';
+    if(p.progress>0) svg+='<rect x="'+sx+'" y="'+barY+'" width="'+Math.round(bw*p.progress/100)+'" height="'+barH+'" rx="4" fill="'+fill+'" fill-opacity="0.55" opacity="'+opacity+'"/>';
+    if(bw>40) svg+='<text x="'+(sx+bw/2)+'" y="'+(barY+barH/2+4)+'" font-size="9" fill="#fff" text-anchor="middle" font-family="sans-serif" font-weight="700">'+p.progress+'%</text>';
+    if(p.milestones)p.milestones.forEach(function(m){
+      var md=parseDate(m.date), mx=labelW+Math.round((md-minD)/(1000*60*60*24))*dayW+dayW/2;
+      svg+='<polygon points="'+mx+','+(y+colH/2-5)+' '+(mx+4)+','+(y+colH/2)+' '+mx+','+(y+colH/2+5)+' '+(mx-4)+','+(y+colH/2)+'" fill="#F59E0B" stroke="#fff" stroke-width="1"/>';
+    });
+    svg+='<rect x="'+sx+'" y="'+barY+'" width="'+bw+'" height="'+barH+'" fill="transparent" style="cursor:pointer" onclick="showDetail(\''+p.id+'\')"/>';
+  });
+  svg+='</svg>';
+  document.getElementById('ganttSvg').innerHTML=svg;
+}
+
+/* ── Task List ── */
+function renderTasks(){
+  // 先渲染姓名筛选 chips
+  var names=[];
+  tasks.forEach(function(t){ if(t.assignee && names.indexOf(t.assignee)===-1) names.push(t.assignee); });
+  var nameChips='<button class="chip'+(taskNameFilter==='all'?' active':'')+'" onclick="setNameFilter(\'all\')">全部人员</button>';
+  names.forEach(function(n){
+    nameChips+='<button class="chip'+(taskNameFilter===n?' active':'')+'" onclick="setNameFilter(\''+esc(n)+'\')">'+es(n)+'</button>';
+  });
+  document.getElementById('taskNameFilter').innerHTML=nameChips;
+
+  var filtered=tasks;
+  if(taskFilter!=='all') filtered=filtered.filter(function(t){return t.status===taskFilter;});
+  if(taskNameFilter!=='all') filtered=filtered.filter(function(t){return t.assignee===taskNameFilter;});
+  var h='';
+  if(filtered.length===0) h='<div class="empty">暂无匹配任务</div>';
+  else filtered.forEach(function(t){
+    var p=projects.find(function(x){return x.id===t.projectId;});
+    var dues=daysUntil(t.dueDate), done=t.status==='已完成';
+    var cls='task-card'+(dues<0&&!done?' overdue':'');
+    var doneCls=done?' done':'';
+    h+='<div class="'+cls+'">'+
+      '<div class="task-top"><span class="task-name">'+es(t.name)+'</span>'+
+      '<span class="task-state'+doneCls+'" onclick="toggleTask(\''+t.id+'\')"></span></div>'+
+      '<div class="task-meta">'+
+        '<span>'+es(t.assignee||'未分配')+'</span><span>'+t.dueDate+'</span>'+
+        (dues<0&&!done?'<span style="color:var(--danger);font-weight:600">逾期'+Math.abs(dues)+'天</span>':'')+
+        (dues===0&&!done?'<span style="color:var(--warn);font-weight:600">今天到期</span>':'')+
+      '</div>';
+    if(p) h+='<div class="task-project" style="color:'+(p.category==='新产品开发'?'var(--blue)':p.category==='老产品优化'?'var(--teal)':'var(--amber)')+'">'+es(p.name)+'</div>';
+    h+='<div style="margin-top:6px;display:flex;gap:6px">'+
+      '<button class="btn btn-sm" onclick="openTaskModal(\''+t.id+'\')">编辑</button>'+
+      '<button class="btn btn-sm" style="color:var(--danger);border-color:transparent" onclick="confirmDeleteTask(\''+t.id+'\')">删除</button>'+
+    '</div></div>';
+  });
+  document.getElementById('taskList').innerHTML=h;
+}
+
+/* ── Stats View ── */
+function renderStatsView(){
+  var today=new Date(); today.setHours(0,0,0,0);
+
+  // ── 聚合数据 ──
+  var totalTasks=tasks.length;
+  var doneTasks=tasks.filter(function(t){return t.status==='已完成';}).length;
+  var overdueTasks=tasks.filter(function(t){return t.status!=='已完成' && daysUntil(t.dueDate)<0;}).length;
+  var inProgress=tasks.filter(function(t){return t.status==='进行中';}).length;
+  var pending=tasks.filter(function(t){return t.status==='待开始';}).length;
+  var taskRate=totalTasks?Math.round(doneTasks/totalTasks*100):0;
+
+  // 按人员统计
+  var personMap={};
+  tasks.forEach(function(t){
+    var name=t.assignee||'未分配';
+    if(!personMap[name]) personMap[name]={total:0,done:0,inProgress:0,pending:0,overdue:0};
+    personMap[name].total++;
+    if(t.status==='已完成') personMap[name].done++;
+    else if(t.status==='进行中') personMap[name].inProgress++;
+    else personMap[name].pending++;
+    if(t.status!=='已完成' && daysUntil(t.dueDate)<0) personMap[name].overdue++;
+  });
+
+  // 按项目统计
+  var projStats=[];
+  projects.forEach(function(p){
+    var pt=tasks.filter(function(t){return t.projectId===p.id;});
+    var done=pt.filter(function(t){return t.status==='已完成';}).length;
+    var ovd=pt.filter(function(t){return t.status!=='已完成' && daysUntil(t.dueDate)<0;}).length;
+    projStats.push({
+      name:p.name, cat:p.category, status:p.status,
+      total:pt.length, done:done, overdue:ovd,
+      pct:pt.length?Math.round(done/pt.length*100):0,
+      wPlan:p.workDaysPlanned||0, wUsed:p.workDaysUsed||0
+    });
+  });
+
+  var persons=Object.keys(personMap).sort(function(a,b){return personMap[b].total-personMap[a].total;});
+  var totalPlanned=projects.reduce(function(s,p){return s+(p.workDaysPlanned||0);},0);
+  var totalUsed=projects.reduce(function(s,p){return s+(p.workDaysUsed||0);},0);
+
+  // 颜色辅助
+  function barColor(pct){ return pct>=80?'#10B981':pct>=50?'#F59E0B':'#EF4444'; }
+  function catColor(c){ return c==='新产品开发'?'var(--blue)':c==='老产品优化'?'var(--teal)':'var(--amber)'; }
+
+  var h='';
+
+  // ── 1. 整体概览卡片 ──
+  h+='<div style="margin-bottom:18px;font-size:16px;font-weight:700;color:var(--text)">整体概览</div>';
+  h+='<div class="stats-cards">'+
+    '<div class="scard"><div class="scard-num">'+totalTasks+'</div><div class="scard-label">任务总数</div></div>'+
+    '<div class="scard done"><div class="scard-num">'+doneTasks+'</div><div class="scard-label">已完成</div></div>'+
+    '<div class="scard warn"><div class="scard-num">'+inProgress+'</div><div class="scard-label">进行中</div></div>'+
+    '<div class="scard danger"><div class="scard-num">'+overdueTasks+'</div><div class="scard-label">已逾期</div></div>'+
+    '<div class="scard"><div class="scard-num">'+taskRate+'%</div><div class="scard-label">完成率</div></div>'+
+    '<div class="scard"><div class="scard-num">'+persons.length+'</div><div class="scard-label">参与人数</div></div>'+
+  '</div>';
+
+  // ── 整体工作量 ──
+  if(totalPlanned>0){
+    var wPct=Math.round(totalUsed/totalPlanned*100);
+    h+='<div style="margin:16px 0 8px;font-size:13px;color:var(--text2)">总工时消耗：<b>'+totalUsed+'</b> / <b>'+totalPlanned+'</b> 天（'+wPct+'%）</div>';
+    h+='<div style="height:8px;background:var(--border-lt);border-radius:4px;margin-bottom:16px;overflow:hidden">'+
+      '<div style="height:100%;width:'+Math.min(wPct,100)+'%;background:'+barColor(100-wPct)+';border-radius:4px;transition:width .4s"></div></div>';
+  }
+
+  // ── 2. 人员工作量统计 ──
+  h+='<div style="margin-bottom:14px;font-size:16px;font-weight:700;color:var(--text)">人员工作量</div>';
+
+  if(persons.length===0){
+    h+='<div class="empty">暂无任务数据</div>';
+  } else {
+    persons.forEach(function(name){
+      var m=personMap[name];
+      var rate=m.total?Math.round(m.done/m.total*100):0;
+      var pendPct=m.total?Math.round(m.pending/m.total*100):0;
+      var inProgPct=m.total?Math.round(m.inProgress/m.total*100):0;
+      var donePct=m.total?Math.round(m.done/m.total*100):0;
+      h+='<div class="person-card">'+
+        '<div class="person-top">'+
+          '<span class="person-name">'+es(name)+'</span>'+
+          '<span class="person-rate" style="color:'+barColor(100-rate)+'">'+rate+'%</span>'+
+        '</div>'+
+        '<div class="person-bar-wrap">'+
+          (pendPct>0?'<div class="person-bar pending" style="width:'+pendPct+'%" title="待开始 '+m.pending+'"></div>':'')+
+          (inProgPct>0?'<div class="person-bar inprog" style="width:'+inProgPct+'%" title="进行中 '+m.inProgress+'"></div>':'')+
+          (donePct>0?'<div class="person-bar done" style="width:'+donePct+'%" title="已完成 '+m.done+'"></div>':'')+
+        '</div>'+
+        '<div class="person-stats">'+
+          '<span>共 '+m.total+' 项</span>'+
+          '<span style="color:var(--success)">完成 '+m.done+'</span>'+
+          (m.inProgress>0?'<span style="color:var(--warn)">进行 '+m.inProgress+'</span>':'')+
+          (m.overdue>0?'<span style="color:var(--danger)">逾期 '+m.overdue+'</span>':'')+
+        '</div>'+
+      '</div>';
+    });
+  }
+
+  // ── 3. 项目任务完成情况 ──
+  h+='<div style="margin:20px 0 14px;font-size:16px;font-weight:700;color:var(--text)">项目任务完成</div>';
+
+  if(projStats.length===0){
+    h+='<div class="empty">暂无项目数据</div>';
+  } else {
+    projStats.sort(function(a,b){return b.total-a.total;});
+    projStats.forEach(function(ps){
+      h+='<div class="proj-stat-card">'+
+        '<div class="proj-stat-top">'+
+          '<span class="proj-stat-name">'+es(ps.name)+'</span>'+
+          '<span class="proj-stat-cat" style="background:'+catColor(ps.cat)+'10;color:'+catColor(ps.cat)+'">'+es(ps.cat)+'</span>'+
+          (ps.status==='已暂停'?'<span style="font-size:11px;color:var(--text3)">已暂停</span>':'')+
+        '</div>';
+      if(ps.total>0){
+        h+='<div style="margin:8px 0;display:flex;align-items:center;gap:8px">'+
+          '<div style="flex:1;height:6px;background:var(--border-lt);border-radius:3px;overflow:hidden">'+
+            '<div style="height:100%;width:'+ps.pct+'%;background:'+barColor(100-ps.pct)+';border-radius:3px;transition:width .4s"></div>'+
+          '</div>'+
+          '<span style="font-size:12px;font-weight:700;min-width:36px;text-align:right;color:'+barColor(100-ps.pct)+'">'+ps.pct+'%</span>'+
+        '</div>'+
+        '<div style="font-size:12px;color:var(--text2)">任务 '+ps.done+'/'+ps.total+
+          (ps.overdue>0?' <span style="color:var(--danger)">(逾期 '+ps.overdue+')</span>':'')+
+        '</div>';
+      } else {
+        h+='<div style="font-size:12px;color:var(--text3)">暂无任务</div>';
+      }
+      if(ps.wPlan>0){
+        var wp=Math.round(ps.wUsed/ps.wPlan*100);
+        h+='<div style="margin-top:6px;font-size:12px;color:var(--text2)">'+
+          '工时：<b>'+ps.wUsed+'</b>/<b>'+ps.wPlan+'</b> 天'+
+          (wp>100?' <span style="color:var(--danger);font-weight:600">超支 '+(wp-100)+'%</span>':'')+
+        '</div>';
+      }
+      h+='</div>';
+    });
+  }
+
+  document.getElementById('statsContent').innerHTML=h;
+}
+
+function setTaskFilter(f){
+  taskFilter=f; renderTasks();
+  document.querySelectorAll('#taskFilter .chip').forEach(function(c){c.classList.toggle('active',c.textContent===(f==='all'?'全部':f));});
+}
+
+function setNameFilter(n){
+  taskNameFilter=n; renderTasks();
+}
+
+function toggleTask(tid){
+  var t=tasks.find(function(x){return x.id===tid;}); if(!t) return;
+  t.status=t.status==='已完成'?'待开始':'已完成'; saveData(true); renderAll(); toast(t.status==='已完成'?'已完成 ✓':'已重新打开');
+  // 如果详情面板正打开，刷新面板
+  if(document.getElementById('detailOverlay').classList.contains('open')){
+    showDetail(t.projectId);
+  }
+}
+
+/* ── Tab Switch ── */
+function switchTab(tab){
+  currentTab=tab;
+  var tabs={kanban:'看板',gantt:'甘特图',tasks:'任务',stats:'统计'};
+  document.querySelectorAll('.tab-btn').forEach(function(b){b.classList.toggle('active',b.textContent.trim()===tabs[tab]);});
+  document.querySelectorAll('.bottom-nav button').forEach(function(b){b.classList.remove('active');});
+  var bn=document.getElementById('bn-'+tab); if(bn) bn.classList.add('active');
+
+  var kde=document.getElementById('kanban').style; kde.display=tab==='kanban'?'flex':'none';
+  if(window.innerWidth<768) kde.flexDirection=tab==='kanban'?'column':'';
+  document.getElementById('ganttWrap').classList.toggle('active',tab==='gantt');
+  document.getElementById('taskWrap').classList.toggle('active',tab==='tasks');
+  document.getElementById('statsView').style.display=tab==='stats'?'block':'none';
+  if(tab==='gantt') renderGantt();
+  if(tab==='tasks') renderTasks();
+  if(tab==='stats') renderStatsView();
+}
+
+/* ── Quick Menu (mobile FAB) ── */
+function showQuickMenu(){
+  var opts=[{label:'新建项目',action:function(){openProjectModal(null,'新产品开发');}},{label:'新建任务',action:function(){openTaskModal(null,null);}}];
+  var msg='快捷新建：\n1. 新建项目\n2. 新建任务\n\n请选择：';
+  var choice=prompt(msg,'1');
+  if(choice==='1') openProjectModal(null,'新产品开发');
+  else if(choice==='2') openTaskModal(null,null);
+}
+
+/* ── Project Modal ── */
+function openProjectModal(pid, defaultCat){
+  editingProjId=pid;
+  var isNew=!pid;
+  var p=isNew?{category:defaultCat||'新产品开发',status:'规划中',priority:'P1',owner:'',startDate:todayStr(),endDate:'',progress:0,desc:'',milestones:[]}:projects.find(function(x){return x.id===pid;});
+  if(!p) return;
+  editingMilestones=JSON.parse(JSON.stringify(p.milestones||[]));
+
+  var h='<h3>'+(isNew?'新建项目':'编辑项目')+'</h3>'+
+    '<div class="form-group"><label>项目名称 *</label><input id="modPName" value="'+es(p.name||'')+'" placeholder="如：市中心图书馆 RFID 智能馆系统" oninput="scheduleAutoSave()"></div>'+
+    '<div class="form-row">'+
+      '<div class="form-group"><label>分类</label><select id="modPCat" onchange="scheduleAutoSave()"><option value="新产品开发"'+(p.category==='新产品开发'?' selected':'')+'>新产品开发</option><option value="老产品优化"'+(p.category==='老产品优化'?' selected':'')+'>老产品优化</option><option value="非标项目"'+(p.category==='非标项目'?' selected':'')+'>非标项目</option></select></div>'+
+      '<div class="form-group"><label>状态</label><select id="modPStatus" onchange="scheduleAutoSave()"><option value="规划中"'+(p.status==='规划中'?' selected':'')+'>规划中</option><option value="进行中"'+(p.status==='进行中'?' selected':'')+'>进行中</option><option value="已交付"'+(p.status==='已交付'?' selected':'')+'>已交付</option><option value="已暂停"'+(p.status==='已暂停'?' selected':'')+'>已暂停</option><option value="已取消"'+(p.status==='已取消'?' selected':'')+'>已取消</option></select></div>'+
+    '</div>'+
+    '<div class="form-row">'+
+      '<div class="form-group"><label>优先级</label><select id="modPPrio" onchange="scheduleAutoSave()"><option value="P0"'+(p.priority==='P0'?' selected':'')+'>P0 最高</option><option value="P1"'+(p.priority==='P1'?' selected':'')+'>P1 重要</option><option value="P2"'+(p.priority==='P2'?' selected':'')+'>P2 普通</option></select></div>'+
+      '<div class="form-group"><label>负责人</label><input id="modPOwner" value="'+es(p.owner||'')+'" placeholder="姓名" oninput="scheduleAutoSave()"></div>'+
+    '</div>'+
+    '<div class="form-row">'+
+      '<div class="form-group"><label>开始日期</label><input type="date" id="modPStart" value="'+p.startDate+'" onchange="scheduleAutoSave()"></div>'+
+      '<div class="form-group"><label>截止日期</label><input type="date" id="modPEnd" value="'+p.endDate+'" onchange="scheduleAutoSave()"></div>'+
+    '</div>'+
+    '<div class="form-row">'+
+      '<div class="form-group"><label>进度 (%)</label><input type="number" id="modPProg" value="'+p.progress+'" min="0" max="100" oninput="scheduleAutoSave()"></div>'+
+    '</div>'+
+    '<div class="form-row">'+
+      '<div class="form-group"><label>计划工作日（天）</label><input type="number" id="modPWPlan" value="'+(p.workDaysPlanned||0)+'" min="0" placeholder="预计投入人天" oninput="scheduleAutoSave()"></div>'+
+      '<div class="form-group"><label>已用工作日（天）</label><input type="number" id="modPWUsed" value="'+(p.workDaysUsed||0)+'" min="0" placeholder="实际已消耗人天" oninput="scheduleAutoSave()"></div>'+
+    '</div>'+
+    '<div class="form-group"><label>描述</label><textarea id="modPDesc" placeholder="项目简要描述…" oninput="scheduleAutoSave()">'+es(p.desc||'')+'</textarea></div>'+
+    '<div class="form-group"><label>关键节点 <span style="font-weight:400;color:var(--text3)">（名称 + 日期）</span></label><div id="modMilestones"></div>'+
+    '<button class="btn btn-sm" onclick="addMilestone()">+ 添加节点</button></div>'+
+    '<div class="modal-footer">'+
+      '<button class="btn" onclick="closeModal()">取消</button>'+
+      (isNew?'':'<button class="btn" style="color:var(--danger)" onclick="confirmDeleteProjectInModal(\''+pid+'\')">删除</button>')+
+      '<button class="btn btn-primary" onclick="saveProject()">'+ (isNew?'创建':'保存') +'</button>'+
+    '</div>';
+  document.getElementById('modalBox').innerHTML=h;
+  document.getElementById('modalOverlay').classList.add('open');
+  renderMilestoneInputs();
+}
+
+function renderMilestoneInputs(){
+  var h='';
+  editingMilestones.forEach(function(m,i){
+    h+='<div class="milestone-row"><input value="'+es(m.name)+'" data-mi="'+i+'" data-field="name" placeholder="节点名称"><input type="date" value="'+m.date+'" data-mi="'+i+'" data-field="date" style="max-width:140px"><button class="btn btn-sm" style="color:var(--danger)" onclick="removeMilestone('+i+')">×</button></div>';
+  });
+  document.getElementById('modMilestones').innerHTML=h;
+}
+
+function syncMilestones(){
+  document.querySelectorAll('#modMilestones input').forEach(function(inp){
+    var i=parseInt(inp.dataset.mi), field=inp.dataset.field;
+    if(!isNaN(i) && editingMilestones[i]) editingMilestones[i][field]=inp.value;
+  });
+}
+
+function addMilestone(){
+  editingMilestones.push({name:'',date:todayStr()});
+  renderMilestoneInputs();
+}
+
+function removeMilestone(idx){
+  editingMilestones.splice(idx,1); renderMilestoneInputs();
+}
+
+function saveProject(){
+  syncMilestones();
+  var name=(document.getElementById('modPName').value||'').trim();
+  if(!name){ toast('请输入项目名称'); return; }
+  var data={
+    name:name, category:document.getElementById('modPCat').value,
+    status:document.getElementById('modPStatus').value,
+    priority:document.getElementById('modPPrio').value,
+    owner:document.getElementById('modPOwner').value.trim(),
+    startDate:document.getElementById('modPStart').value,
+    endDate:document.getElementById('modPEnd').value,
+    progress:Math.min(100,Math.max(0,parseInt(document.getElementById('modPProg').value)||0)),
+    workDaysPlanned:Math.max(0,parseInt(document.getElementById('modPWPlan').value)||0),
+    workDaysUsed:Math.max(0,parseInt(document.getElementById('modPWUsed').value)||0),
+    desc:document.getElementById('modPDesc').value.trim(),
+    milestones:editingMilestones.filter(function(m){return m.name.trim();})
+  };
+
+  if(editingProjId){
+    var idx=projects.findIndex(function(x){return x.id===editingProjId;});
+    if(idx>=0){ data.id=editingProjId; projects[idx]=data; }
+    else { data.id=genId(); projects.push(data); }
+  } else {
+    data.id=genId(); projects.push(data);
+  }
+  saveData(true); localStorage.removeItem('wb_lib_draft'); closeModal(); renderAll(); toast(editingProjId?'已更新':'项目已创建');
+}
+
+/* ── Task Modal ── */
+function openTaskModal(tid, presetProjectId){
+  var t=tid?tasks.find(function(x){return x.id===tid;}):{projectId:presetProjectId||'',name:'',assignee:'',status:'待开始',priority:'P1',dueDate:todayStr()};
+  if(!t) return;
+
+  var projOpts='<option value="">-- 选择项目 --</option>';
+  projects.forEach(function(p){ projOpts+='<option value="'+p.id+'"'+(t.projectId===p.id?' selected':'')+'>'+es(p.name)+'</option>'; });
+
+  var h='<h3>'+(tid?'编辑任务':'新建任务')+'</h3>'+
+    '<div class="form-group"><label>任务名称 *</label><input id="modTName" value="'+es(t.name)+'" placeholder="如：RFID设备选型对比报告"></div>'+
+    '<div class="form-group"><label>所属项目</label><select id="modTProj">'+projOpts+'</select></div>'+
+    '<div class="form-row">'+
+      '<div class="form-group"><label>负责人</label><input id="modTAssignee" value="'+es(t.assignee||'')+'" placeholder="姓名"></div>'+
+      '<div class="form-group"><label>状态</label><select id="modTStatus"><option value="待开始"'+(t.status==='待开始'?' selected':'')+'>待开始</option><option value="进行中"'+(t.status==='进行中'?' selected':'')+'>进行中</option><option value="已完成"'+(t.status==='已完成'?' selected':'')+'>已完成</option></select></div>'+
+    '</div>'+
+    '<div class="form-row">'+
+      '<div class="form-group"><label>优先级</label><select id="modTPrio"><option value="P0"'+(t.priority==='P0'?' selected':'')+'>P0</option><option value="P1"'+(t.priority==='P1'?' selected':'')+'>P1</option><option value="P2"'+(t.priority==='P2'?' selected':'')+'>P2</option></select></div>'+
+      '<div class="form-group"><label>截止日期</label><input type="date" id="modTDue" value="'+t.dueDate+'"></div>'+
+    '</div>'+
+    '<div class="modal-footer">'+
+      '<button class="btn" onclick="closeModal()">取消</button>'+
+      (tid?'<button class="btn" style="color:var(--danger)" onclick="confirmDeleteTask(\''+tid+'\')">删除</button>':'')+
+      '<button class="btn btn-primary" onclick="saveTask(\''+(tid||'')+'\')">'+(tid?'保存':'创建')+'</button>'+
+    '</div>';
+  document.getElementById('modalBox').innerHTML=h;
+  document.getElementById('modalOverlay').classList.add('open');
+}
+
+function saveTask(tid){
+  var name=(document.getElementById('modTName').value||'').trim();
+  if(!name){ toast('请输入任务名称'); return; }
+  var data={
+    id:tid||genId(), name:name,
+    projectId:document.getElementById('modTProj').value,
+    assignee:document.getElementById('modTAssignee').value.trim(),
+    status:document.getElementById('modTStatus').value,
+    priority:document.getElementById('modTPrio').value,
+    dueDate:document.getElementById('modTDue').value
+  };
+  if(tid){ var idx=tasks.findIndex(function(x){return x.id===tid;}); if(idx>=0) tasks[idx]=data; }
+  else tasks.push(data);
+  saveData(true); closeModal(); renderAll(); toast(tid?'已更新':'任务已创建');
+}
+
+/* ── Modal ── */
+function closeModal(){ document.getElementById('modalOverlay').classList.remove('open'); editingProjId=null; }
+
+/* ── Toast ── */
+function toast(msg){
+  var el=document.getElementById('toast'); el.textContent=msg; el.classList.add('show');
+  clearTimeout(el._t); el._t=setTimeout(function(){el.classList.remove('show');},1800);
+}
+
+/* ── Clear Data ── */
+function clearSample(){
+  if(!confirm('⚠️ 确定要清空全部数据（共 '+projects.length+' 个项目 + '+tasks.length+' 个任务）？\n\n此操作不可撤销！建议先导出备份。')) return;
+  if(!confirm('再次确认：你确定要删除全部数据吗？')) return;
+  projects=[]; tasks=[]; saveData(true); renderAll(); toast('已清空全部数据');
+}
+function exportData(){
+  var data={projects:projects,tasks:tasks,exportedAt:new Date().toISOString()};
+  var blob=new Blob([JSON.stringify(data,null,2)],{type:'application/json'});
+  var a=document.createElement('a'); a.href=URL.createObjectURL(blob);
+  a.download='图书馆研发工作台_备份_'+todayStr()+'.json'; a.click(); toast('已导出');
+}
+
+function importData(input){
+  var file=input.files[0]; if(!file) return;
+  var reader=new FileReader();
+  reader.onload=function(e){
+    try{
+      var data=JSON.parse(e.target.result);
+      if(!data.projects || !Array.isArray(data.projects)) throw new Error('格式错误');
+      var count=data.projects.length+ (data.tasks?data.tasks.length:0);
+      if(!confirm('即将导入 '+count+' 条数据，当前数据将被覆盖。确定继续？')){ input.value=''; return; }
+      projects=data.projects; tasks=data.tasks||[];
+      saveData(); renderAll(); toast('已导入 '+count+' 条数据');
+    }catch(err){ toast('导入失败：文件格式不正确'); }
+    input.value='';
+  };
+  reader.readAsText(file);
+}
+
+/* ── Resize ── */
+window.addEventListener('resize',function(){ if(currentTab==='gantt') renderGantt(); });
+
+/* ── Keyboard ── */
+document.addEventListener('keydown',function(e){ if(e.key==='Escape'){ closeModal(); closeDetail(); } });
+</script>
+</body>
+</html>
