@@ -93,7 +93,7 @@ const server = http.createServer(async function (req, res) {
 
   // GET /api/health — 健康检查
   if (urlPath === '/api/health' && req.method === 'GET') {
-    json(res, 200, { status: 'ok', uptime: process.uptime() });
+    json(res, 200, { status: 'ok', uptime: process.uptime(), version: 'v3.2' });
     return;
   }
 
