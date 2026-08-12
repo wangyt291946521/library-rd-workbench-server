@@ -91,6 +91,12 @@ input[type="text"],input[type="date"],input[type="number"],select,textarea{font-
 .mstone-dot.done{background:var(--success)}
 .mstone-dot.future{background:var(--text3)}
 .kcard-date{font-size:11px;color:var(--text3);margin-top:2px}
+/* 项目健康度状态徽标（🔴超支 / 🟠滞后 / 🟢超前） */
+.khealth{display:inline-flex;align-items:center;gap:4px;font-size:11px;font-weight:700;padding:2px 8px;border-radius:10px;line-height:1.5}
+.khealth.over{background:rgba(239,68,68,.12);color:#dc2626}
+.khealth.behind{background:rgba(245,158,11,.15);color:#d97706}
+.khealth.ahead{background:rgba(16,185,129,.14);color:#059669}
+.khealth-row{margin-bottom:2px}
 
 /* ── Detail Panel ── */
 .detail-overlay{position:fixed;inset:0;z-index:200;display:none;align-items:flex-end;justify-content:center}
@@ -310,7 +316,7 @@ input[type="text"],input[type="date"],input[type="number"],select,textarea{font-
   <div class="topbar-title">
     <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="var(--blue)" stroke-width="2"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/></svg>
     图书馆研发工作台
-    <span class="ver-badge">v3.10</span>
+    <span class="ver-badge">v3.11</span>
   </div>
   <div class="topbar-actions">
     <span id="syncDot" class="sync-dot sync-offline" title="本地存储" style="margin-right:2px"></span>
@@ -790,6 +796,27 @@ function calcBurnPct(p){
   if(hp<=0) return -1;
   return Math.round(hoursUsedOfProject(p.id)/hp*100);
 }
+// 项目健康度状态：🔴超支 / 🟠滞后 / 🟢超前
+//  超支：已用工作日 > 计划工作日（工时预算超支，优先级最高）
+//  滞后：未超支，但工作进度落后于时间进度（实际产出落后于日历推进）
+//  超前：未超支，且工作进度领先于时间进度（实际产出快于日历推进）
+//  容差 ±5 个百分点内视为正常，返回 null（不显示徽标）
+function projectHealth(p){
+  if(!p) return null;
+  var plan=(p.workDaysPlanned||0), used=(p.workDaysUsed||0);
+  if(plan>0 && used>plan){
+    return {cls:'over', icon:'🔴', label:'超支',
+      tip:'已用工作日 '+fmtWorkDays(used)+' 天 ＞ 计划 '+plan+' 天，工时预算超支'};
+  }
+  var tp=calcTimePct(p), wp=(p.progress||0);
+  if(tp<0) return null; // 缺少起止时间，无法判定超前/滞后
+  var slack=5;
+  if(wp - tp > slack) return {cls:'ahead', icon:'🟢', label:'超前',
+    tip:'工作进度 '+wp+'% ＞ 时间进度 '+tp+'%，进度领先于计划'};
+  if(tp - wp > slack) return {cls:'behind', icon:'🟠', label:'滞后',
+    tip:'工作进度 '+wp+'% ＜ 时间进度 '+tp+'%，进度落后于计划'};
+  return null; // 正常
+}
 // 人员工时汇总：{name:{hours, projCount, count}}
 function worklogHoursByPerson(){
   var m={};
@@ -1005,6 +1032,8 @@ function renderKanban(){
     var taskCount=tasks.filter(function(t){return t.projectId===p.id;}).length;
     var taskDone=tasks.filter(function(t){return t.projectId===p.id && t.status==='已完成'}).length;
     var barColor=p.category==='新产品开发'?'var(--blue)':p.category==='老产品优化'?'var(--teal)':'var(--amber)';
+    var hp=projectHealth(p);
+    var healthHTML=hp?'<span class="khealth '+hp.cls+'" title="'+hp.tip+'">'+hp.icon+' '+hp.label+'</span>':'';
 
     var h='<div class="'+cls+'" data-id="'+p.id+'" draggable="true" onclick="showDetail(\''+p.id+'\')">'+
       '<div class="kcard-top">'+
@@ -1013,6 +1042,7 @@ function renderKanban(){
         '<span class="kcard-prio '+p.priority+'">'+p.priority+'</span>'+
       '</div>'+
       '<div class="kcard-body">'+
+        (healthHTML?'<div class="khealth-row">'+healthHTML+'</div>':'')+
         '<div class="kcard-row"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M20 21v-2a4 4 0 00-4-4H8a4 4 0 00-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>'+es(p.owner||'未分配')+'</div>';
 
     if(taskCount>0){
@@ -1167,6 +1197,7 @@ function showDetail(pid){
 
   var h='<button class="detail-close" onclick="closeDetail()">×</button>'+
     '<div class="detail-title">'+es(p.name)+'</div>'+
+    (function(){ var hp=projectHealth(p); return hp?'<div style="margin:-8px 0 14px"><span class="khealth '+hp.cls+'" title="'+hp.tip+'">'+hp.icon+' '+hp.label+'</span></div>':''; })()+
     '<div class="detail-field"><label>分类</label><div class="val">'+p.category+' · <span style="color:#6B7280;font-weight:400">'+p.priority+'</span></div></div>'+
     '<div class="detail-field"><label>负责人</label><div class="val">'+es(p.owner||'未分配')+'</div></div>'+
     '<div class="detail-field"><label>时间</label><div class="val" style="font-size:13px">'+p.startDate+' ~ '+p.endDate+'</div></div>'+
@@ -1476,6 +1507,17 @@ function renderStatsView(){
     '<div class="scard"><div class="scard-num">'+taskRate+'%</div><div class="scard-label">完成率</div></div>'+
     '<div class="scard"><div class="scard-num">'+persons.length+'</div><div class="scard-label">参与人数</div></div>'+
   '</div>';
+
+  // ── 项目健康度概览（🔴超支 / 🟠滞后 / 🟢超前）──
+  var cntOver=0,cntBehind=0,cntAhead=0;
+  projects.forEach(function(p){ var hp=projectHealth(p); if(hp){ if(hp.cls==='over')cntOver++; else if(hp.cls==='behind')cntBehind++; else if(hp.cls==='ahead')cntAhead++; } });
+  if(cntOver+cntBehind+cntAhead>0){
+    h+='<div class="stats-cards" style="margin-bottom:18px">'+
+      '<div class="scard danger"><div class="scard-num">'+cntOver+'</div><div class="scard-label">🔴 超支</div></div>'+
+      '<div class="scard warn"><div class="scard-num">'+cntBehind+'</div><div class="scard-label">🟠 滞后</div></div>'+
+      '<div class="scard" style="border-color:rgba(16,185,129,.3);background:rgba(16,185,129,.04)"><div class="scard-num">'+cntAhead+'</div><div class="scard-label">🟢 超前</div></div>'+
+    '</div>';
+  }
 
   // ── 1.5 工时总览（登记工时 / 计划工时 / 消耗率）──
   var tLog=totalLoggedHours(), tPlan=totalPlannedHours();
