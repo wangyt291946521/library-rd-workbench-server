@@ -25,6 +25,7 @@ input[type="text"],input[type="date"],input[type="number"],select,textarea{font-
 /* ── Top Bar ── */
 .topbar{position:sticky;top:0;z-index:100;background:var(--card);border-bottom:1px solid var(--border);padding:10px 16px;display:flex;align-items:center;justify-content:space-between;gap:8px}
 .topbar-title{font-size:17px;font-weight:700;color:var(--text);display:flex;align-items:center;gap:7px;white-space:nowrap}
+.ver-badge{font-size:10px;font-weight:600;color:#2563EB;background:#DBEAFE;border:1px solid #BFDBFE;border-radius:6px;padding:1px 6px;line-height:1.6}
 .topbar-actions{display:flex;gap:6px}
 
 .btn{display:inline-flex;align-items:center;gap:5px;padding:7px 13px;border:1px solid var(--border);border-radius:var(--radius-sm);font-size:13px;font-weight:600;cursor:pointer;background:var(--card);color:var(--text2);transition:all .15s;white-space:nowrap;min-height:36px}
@@ -294,6 +295,7 @@ input[type="text"],input[type="date"],input[type="number"],select,textarea{font-
   <div class="topbar-title">
     <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="var(--blue)" stroke-width="2"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/></svg>
     图书馆研发工作台
+    <span class="ver-badge">v3.1</span>
   </div>
   <div class="topbar-actions">
     <span id="syncDot" class="sync-dot sync-offline" title="本地存储" style="margin-right:2px"></span>
