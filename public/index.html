@@ -310,7 +310,7 @@ input[type="text"],input[type="date"],input[type="number"],select,textarea{font-
   <div class="topbar-title">
     <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="var(--blue)" stroke-width="2"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/></svg>
     图书馆研发工作台
-    <span class="ver-badge">v3.8</span>
+    <span class="ver-badge">v3.9</span>
   </div>
   <div class="topbar-actions">
     <span id="syncDot" class="sync-dot sync-offline" title="本地存储" style="margin-right:2px"></span>
@@ -1202,7 +1202,7 @@ function showDetail(pid){
         '<div class="task-meta"><span>'+es(t.assignee||'')+'</span><span>'+t.dueDate+'</span><span style="color:var(--text3)">'+t.status+'</span></div>'+
         (t.desc?'<div style="font-size:12px;color:var(--text2);margin-top:4px;padding:4px 8px;background:var(--border-lt);border-radius:4px">'+es(t.desc)+'</div>':'')+
         '<div style="margin-top:8px;display:flex;flex-wrap:wrap;gap:6px">'+
-          '<button class="btn btn-sm wl-btn" onclick="event.stopPropagation();openTaskWorklogModal(\''+t.id+'\')">⏱ 记工时</button>'+
+          '<button class="btn btn-sm wl-btn" style="display:none" onclick="event.stopPropagation();openTaskWorklogModal(\''+t.id+'\')">⏱ 记工时</button>'+
           (done
             ?'<button class="btn btn-sm task-done-btn" onclick="event.stopPropagation();toggleTask(\''+t.id+'\')">已完成 ✓</button>'
             :'<button class="btn btn-sm task-complete-btn" onclick="event.stopPropagation();toggleTask(\''+t.id+'\')">完成</button>')+
@@ -1406,7 +1406,7 @@ function renderTasks(){
     if(p) h+='<div class="task-project" style="color:'+(p.category==='新产品开发'?'var(--blue)':p.category==='老产品优化'?'var(--teal)':'var(--amber)')+'">'+es(p.name)+'</div>';
     if(t.desc) h+='<div style="font-size:12px;color:var(--text2);margin-top:4px;padding:4px 8px;background:var(--border-lt);border-radius:4px">'+es(t.desc)+'</div>';
     h+='<div style="margin-top:8px;display:flex;flex-wrap:wrap;gap:6px">'+
-      '<button class="btn btn-sm wl-btn" onclick="openTaskWorklogModal(\''+t.id+'\')">⏱ 记工时</button>'+
+      '<button class="btn btn-sm wl-btn" style="display:none" onclick="openTaskWorklogModal(\''+t.id+'\')">⏱ 记工时</button>'+
       (done
         ?'<button class="btn btn-sm task-done-btn" onclick="toggleTask(\''+t.id+'\')">已完成 ✓</button>'
         :'<button class="btn btn-sm task-complete-btn" onclick="toggleTask(\''+t.id+'\')">完成</button>')+
