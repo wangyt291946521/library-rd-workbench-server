@@ -63,7 +63,11 @@ input[type="text"],input[type="date"],input[type="number"],select,textarea{font-
 .col-new:hover{color:var(--blue);border-color:var(--blue);background:var(--blue-bg)}
 
 /* ── Kanban Card ── */
-.kcard{background:var(--card);border-radius:var(--radius);box-shadow:var(--shadow-card);border:1px solid var(--border-lt);padding:12px;cursor:pointer;transition:all .15s}
+.kcard{background:var(--card);border-radius:var(--radius);box-shadow:var(--shadow-card);border:1px solid var(--border-lt);padding:12px;cursor:grab;transition:all .15s;touch-action:pan-y;user-select:none}
+.kcard:active{cursor:grabbing}
+.kcard.dragging{opacity:.45;border:2px dashed var(--blue);transform:scale(.97);box-shadow:none}
+.kcard.drag-hint{border-top:3px solid var(--blue);border-radius:4px}
+.kcard-drag{color:var(--text3);font-size:11px;letter-spacing:-2px;cursor:grab;padding:0 2px;flex-shrink:0;line-height:1.6;user-select:none;touch-action:none}
 .kcard:hover{box-shadow:0 2px 8px rgba(0,0,0,.08)}
 .kcard.overdue{border-left:3px solid var(--danger)}
 .kcard.soon{border-left:3px solid var(--warn)}
@@ -295,7 +299,7 @@ input[type="text"],input[type="date"],input[type="number"],select,textarea{font-
   <div class="topbar-title">
     <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="var(--blue)" stroke-width="2"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/></svg>
     图书馆研发工作台
-    <span class="ver-badge">v3.2</span>
+    <span class="ver-badge">v3.3</span>
   </div>
   <div class="topbar-actions">
     <span id="syncDot" class="sync-dot sync-offline" title="本地存储" style="margin-right:2px"></span>
@@ -900,9 +904,10 @@ function renderKanban(){
     var taskDone=tasks.filter(function(t){return t.projectId===p.id && t.status==='已完成'}).length;
     var barColor=p.category==='新产品开发'?'var(--blue)':p.category==='老产品优化'?'var(--teal)':'var(--amber)';
 
-    var h='<div class="'+cls+'" onclick="showDetail(\''+p.id+'\')">'+
+    var h='<div class="'+cls+'" data-id="'+p.id+'" draggable="true" onclick="showDetail(\''+p.id+'\')">'+
       '<div class="kcard-top">'+
         '<div class="kcard-name">'+es(p.name)+'</div>'+
+        '<span class="kcard-drag" title="拖拽调整顺序">⠿</span>'+
         '<span class="kcard-prio '+p.priority+'">'+p.priority+'</span>'+
       '</div>'+
       '<div class="kcard-body">'+
@@ -944,6 +949,108 @@ function renderKanban(){
   renderCol('新产品开发','新产品开发','cnt-new','cards-new');
   renderCol('老产品优化','老产品优化','cnt-opt','cards-opt');
   renderCol('非标项目','非标项目','cnt-custom','cards-custom');
+  setupKanbanSort();
+}
+
+// 看板卡片同列拖拽排序（事件委托，桌面 HTML5 DnD；触屏从 ⠿ 手柄拖动）
+function setupKanbanSort(){
+  ['cards-new','cards-opt','cards-custom'].forEach(function(id){
+    var box=document.getElementById(id);
+    if(!box || box.dataset.sortReady) return;
+    box.dataset.sortReady='1';
+    box.dataset.category=id==='cards-new'?'新产品开发':id==='cards-opt'?'老产品优化':'非标项目';
+    var dragId=null, dragging=null, touchDrag=null;
+
+    function commitSort(){
+      if(dragId===null) return;
+      if(dragging){ dragging.classList.remove('dragging'); dragging=null; }
+      var order=[];
+      box.querySelectorAll('.kcard').forEach(function(c){ order.push(c.dataset.id); });
+      applyProjectOrder(box.dataset.category,order);
+      dragId=null;
+      saveData(true);
+      toast('已调整排序');
+    }
+
+    // ── 桌面：HTML5 拖拽 ──
+    box.addEventListener('dragstart',function(e){
+      var card=e.target.closest('.kcard'); if(!card) return;
+      dragId=card.dataset.id; dragging=card;
+      setTimeout(function(){ if(dragging) dragging.classList.add('dragging'); },0);
+      e.dataTransfer.effectAllowed='move';
+      e.dataTransfer.setData('text/plain',dragId);
+    });
+
+    box.addEventListener('dragover',function(e){
+      e.preventDefault();
+      if(!dragId) return;
+      e.dataTransfer.dropEffect='move';
+      var target=e.target.closest('.kcard');
+      if(!target || target.dataset.id===dragId) return;
+      var after=e.clientY > target.getBoundingClientRect().top + target.offsetHeight/2;
+      if(after){ if(target.nextElementSibling!==dragging) box.insertBefore(dragging,target.nextElementSibling); }
+      else if(target!==dragging) box.insertBefore(dragging,target);
+    });
+
+    box.addEventListener('drop',function(e){ e.preventDefault(); commitSort(); });
+    box.addEventListener('dragend',commitSort);
+
+    // ── 触屏：从 ⠿ 手柄拖动 ──
+    box.addEventListener('pointerdown',function(e){
+      if(e.pointerType!=='touch' || !e.target.closest('.kcard-drag')) return;
+      var card=e.target.closest('.kcard'); if(!card) return;
+      touchDrag={card:card,id:card.dataset.id,startY:e.clientY,startX:e.clientX,active:false,pointerId:e.pointerId};
+    });
+
+    box.addEventListener('pointermove',function(e){
+      if(!touchDrag || e.pointerId!==touchDrag.pointerId) return;
+      var dy=Math.abs(e.clientY-touchDrag.startY), dx=Math.abs(e.clientX-touchDrag.startX);
+      if(!touchDrag.active){
+        if(dy<8 && dx<8) return;
+        if(dx>dy){ touchDrag=null; return; } // 横向滑动忽略
+        touchDrag.active=true;
+        dragId=touchDrag.id; dragging=touchDrag.card;
+        dragging.classList.add('dragging');
+        dragging.style.transition='none';
+        try{ dragging.setPointerCapture(e.pointerId); }catch(err){}
+      }
+      e.preventDefault();
+      var el=document.elementFromPoint(e.clientX,e.clientY);
+      var tcard=el?el.closest('.kcard'):null;
+      if(tcard && tcard.dataset.id!==touchDrag.id){
+        var after=e.clientY > tcard.getBoundingClientRect().top + tcard.offsetHeight/2;
+        if(after){ if(tcard.nextElementSibling!==dragging) box.insertBefore(dragging,tcard.nextElementSibling); }
+        else if(tcard!==dragging) box.insertBefore(dragging,tcard);
+      }
+    });
+
+    function endTouch(e){
+      if(!touchDrag || (e && e.pointerId!==touchDrag.pointerId)) return;
+      var t=touchDrag; touchDrag=null;
+      if(t.active){
+        t.card.classList.remove('dragging');
+        t.card.style.transition='';
+        // 阻止触屏拖拽结束后误触卡片打开详情
+        var block=function(ev){ ev.stopPropagation(); ev.preventDefault(); document.removeEventListener('click',block,true); };
+        document.addEventListener('click',block,true);
+        commitSort();
+      }
+    }
+    box.addEventListener('pointerup',endTouch);
+    box.addEventListener('pointercancel',endTouch);
+  });
+}
+
+// 把某分类下的项目按拖拽后的顺序写回 projects 数组
+function applyProjectOrder(category,orderedIds){
+  var inCat=projects.filter(function(p){return p.category===category;});
+  if(inCat.length<2) return;
+  var out=projects.filter(function(p){return p.category!==category;});
+  var map={}; inCat.forEach(function(p){ map[p.id]=p; });
+  var list=[];
+  orderedIds.forEach(function(id){ if(map[id]){ list.push(map[id]); delete map[id]; } });
+  inCat.forEach(function(p){ if(map[p.id]) list.push(p); });
+  projects=out.concat(list);
 }
 
 /* ── Detail Panel ── */
