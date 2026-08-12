@@ -308,7 +308,7 @@ input[type="text"],input[type="date"],input[type="number"],select,textarea{font-
   <div class="topbar-title">
     <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="var(--blue)" stroke-width="2"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/></svg>
     图书馆研发工作台
-    <span class="ver-badge">v3.5</span>
+    <span class="ver-badge">v3.6</span>
   </div>
   <div class="topbar-actions">
     <span id="syncDot" class="sync-dot sync-offline" title="本地存储" style="margin-right:2px"></span>
@@ -701,15 +701,12 @@ function autoCalcWorkDaysPlanned(p){
   if(!p.startDate||!p.endDate) return 0;
   return bizDaysBetween(parseDate(p.startDate),parseDate(p.endDate));
 }
-// 已用工作日 = 开始到 min(今天, 截止) 的工作日数
+// 已用工作日 = 登记工时合计 ÷ 7.5（与工时登记联动；无登记为 0 天）
 function autoCalcWorkDaysUsed(p){
-  if(!p.startDate) return 0;
-  var sd=parseDate(p.startDate); if(!isValidDate(sd)) return 0;
-  var today=new Date(); today.setHours(0,0,0,0);
-  var ed=p.endDate?parseDate(p.endDate):today;
-  if(!isValidDate(ed)||ed>today) ed=today;
-  if(sd>today) return 0;
-  return bizDaysBetween(sd,ed);
+  if(!p || !p.id) return 0;
+  var h=hoursUsedOfProject(p.id);
+  if(h<=0) return 0;
+  return Math.round(h/HOURS_PER_DAY*10)/10;
 }
 // 对单个项目应用自动计算
 function refreshProjectAutoCalc(p){
@@ -729,14 +726,14 @@ function refreshAllAutoCalc(){
 }
 
 /* ── Worklog 工时与工作量计算（设计文档 §3） ── */
-var HOURS_PER_DAY=8;            // 1 人天 = 8 小时
+var HOURS_PER_DAY=7.5;          // 1 人天 = 7.5 小时
 var PROG_W_E=0.7, PROG_W_T=0.3; // 综合进度权重：工时为主、时间为辅
 
 // 项目登记工时合计（小时）
 function hoursUsedOfProject(pid){
   return (worklogs||[]).filter(function(w){return w.projectId===pid;}).reduce(function(s,w){return s+(+w.hours||0);},0);
 }
-// 项目计划小时 = 计划人天 × 8
+// 项目计划小时 = 计划人天 × 7.5
 function hoursPlannedOf(p){ return (p.workDaysPlanned||0)*HOURS_PER_DAY; }
 // E 工作量进度（%）登记工时/计划小时，clamp 0-100；无计划返回 -1
 function calcEffortPct(p){
@@ -1796,14 +1793,15 @@ function updateWorkAutoCalc(){
 
   if(_autoWork){
     var planned2=autoCalcWorkDaysPlanned({startDate:sd,endDate:ed});
-    var used2=autoCalcWorkDaysUsed({startDate:sd,endDate:ed});
+    var curProj=projects.find(function(x){return x.id===editingProjId;});
+    var used2=autoCalcWorkDaysUsed(curProj||{id:''});
     wPlanInput.value=planned2;
     wUsedInput.value=used2;
     wPlanInput.classList.add('input-disabled');
     wUsedInput.classList.add('input-disabled');
     if(workHint){
       workHint.className='auto-calc-hint ok';
-      workHint.innerHTML='<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 11l3 3L22 4"/></svg>计划 '+planned2+' 工作日 | 已用 '+used2+' 工作日（按工作日自动计算，不含周末）';
+      workHint.innerHTML='<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 11l3 3L22 4"/></svg>计划 '+planned2+' 工作日 | 已用 '+used2+' 工作日（已用=登记工时合计 ÷ 7.5 自动换算）';
     }
   } else {
     wPlanInput.classList.remove('input-disabled');
