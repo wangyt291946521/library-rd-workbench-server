@@ -268,6 +268,23 @@ input[type="text"],input[type="date"],input[type="number"],select,textarea{font-
 .wl-bar{flex:1;height:4px;background:var(--border-lt);border-radius:2px;overflow:hidden;display:flex}
 .wl-fill{height:100%;border-radius:2px;background:var(--amber);transition:width .3s}
 .wl-txt{font-size:10px;color:var(--text3);white-space:nowrap}
+
+/* ── Form Sections ── */
+.form-section{margin:16px 0 10px;padding-top:14px;border-top:1px solid var(--border-lt)}
+.form-section:first-of-type{border-top:none;padding-top:0;margin-top:0}
+.form-section-title{font-size:13px;font-weight:700;color:var(--text);margin-bottom:10px;display:flex;align-items:center;gap:6px}
+.form-section-title svg{width:14px;height:14px;color:var(--blue)}
+.form-hint{font-size:11px;color:var(--text3);margin-top:4px;line-height:1.4}
+.form-hint.warn{color:var(--amber)}
+.toggle-group{display:flex;gap:0;border:1px solid var(--border);border-radius:6px;overflow:hidden;margin-bottom:4px}
+.toggle-btn{flex:1;padding:6px 10px;font-size:12px;font-weight:600;border:none;background:var(--card);color:var(--text3);cursor:pointer;transition:all .15s;min-height:34px}
+.toggle-btn.active{background:var(--blue);color:#fff}
+.auto-calc-hint{font-size:11px;color:var(--text3);margin-top:4px;display:flex;align-items:flex-start;gap:4px;line-height:1.4}
+.auto-calc-hint svg{width:12px;height:12px;flex-shrink:0;margin-top:2px}
+.auto-calc-hint.ok{color:var(--success)}
+.auto-calc-hint.warn{color:var(--amber)}
+.input-disabled{opacity:.5;pointer-events:none}
+.form-group label .label-badge{font-size:10px;font-weight:400;color:var(--text3);margin-left:4px;padding:1px 6px;background:var(--border-lt);border-radius:8px}
 </style>
 </head>
 <body>
@@ -447,6 +464,13 @@ function loadData(){
     });
     saveData();
   }
+  // 为旧项目补上自动计算字段（默认开启）
+  projects.forEach(function(pr){
+    if(pr.autoProgress===undefined) pr.autoProgress=true;
+    if(pr.autoWorkDays===undefined) pr.autoWorkDays=true;
+  });
+  // 应用自动计算
+  refreshAllAutoCalc();
 }
 
 // ═══════════════════ API 同步 ═══════════════════
@@ -487,6 +511,12 @@ function syncFromServer(callback){
       if(data.projects && data.tasks){
         projects = data.projects;
         tasks = data.tasks;
+        // 补全自动计算字段
+        projects.forEach(function(pr){
+          if(pr.autoProgress===undefined) pr.autoProgress=true;
+          if(pr.autoWorkDays===undefined) pr.autoWorkDays=true;
+        });
+        refreshAllAutoCalc();
         saveLocal();
         _setSyncStatus('online');
       }
@@ -585,7 +615,9 @@ function autoSaveDraft(){
     desc:(document.getElementById('modPDesc')||{}).value||'',
     workDaysPlanned:parseInt((document.getElementById('modPWPlan')||{}).value)||0,
     workDaysUsed:parseInt((document.getElementById('modPWUsed')||{}).value)||0,
-    milestones:editingMilestones
+    milestones:editingMilestones,
+    autoProgress:_autoProg,
+    autoWorkDays:_autoWork
   };
   // 如果正在编辑已有项目，则实时更新到数组
   if(editingProjId){
@@ -607,12 +639,69 @@ function syncMilestonesSilent(){
 
 function genId(){ return 'id_'+Date.now()+'_'+Math.random().toString(36).substr(2,6); }
 function todayStr(){ var d=new Date(); return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0'); }
-function parseDate(s){ var p=s.split('-'); return new Date(+p[0],+p[1]-1,+p[2]); }
+function parseDate(s){ if(!s||typeof s!=='string') return new Date(NaN); var p=s.split('-'); if(p.length!==3) return new Date(NaN); return new Date(+p[0],+p[1]-1,+p[2]); }
+function isValidDate(d){ return d instanceof Date && !isNaN(d.getTime()); }
+function bizDaysBetween(sd,ed){ if(!isValidDate(sd)||!isValidDate(ed)||sd>ed) return 0; var n=0,d=new Date(sd); while(d<=ed){ var w=d.getDay(); if(w!==0&&w!==6) n++; d.setDate(d.getDate()+1); } return n; }
+function daysBetween(sd,ed){ if(!isValidDate(sd)||!isValidDate(ed)) return 0; return Math.round((ed-sd)/(1000*60*60*24)); }
 function daysUntil(s){ if(!s) return 9999; var t=new Date(); t.setHours(0,0,0,0); var d=parseDate(s); if(isNaN(d.getTime())) return 9999; return Math.ceil((d-t)/(1000*60*60*24)); }
 function fmtDate(d){ return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0'); }
 function addDays(d,n){ var x=new Date(d); x.setDate(x.getDate()+n); return x; }
 function es(s){ if(!s) return ''; return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }
 function esc(s){ return (s||'').replace(/\\/g,'\\\\').replace(/'/g,"\\'"); }
+
+/* ── Auto-Calculation (参考 Jira/Linear/Asana 成熟方案) ── */
+// 混合模式进度计算：有任务时按任务完成率，无任务时按时间进度
+function autoCalcProgress(pid){
+  var p=projects.find(function(x){return x.id===pid;}); if(!p) return -1;
+  var pt=tasks.filter(function(t){return t.projectId===pid;});
+  if(pt.length>0){
+    var done=pt.filter(function(t){return t.status==='已完成';}).length;
+    return Math.round(done/pt.length*100);
+  }
+  // 无任务时按时间进度推算
+  if(p.startDate&&p.endDate){
+    var sd=parseDate(p.startDate),ed=parseDate(p.endDate);
+    if(isValidDate(sd)&&isValidDate(ed)){
+      var today=new Date(); today.setHours(0,0,0,0);
+      if(today<=sd) return 0;
+      if(today>=ed) return 100;
+      var total=daysBetween(sd,ed),elapsed=daysBetween(sd,today);
+      return Math.round(elapsed/total*100);
+    }
+  }
+  return -1;
+}
+// 计划工作日 = 开始到截止的工作日数（不含周末）
+function autoCalcWorkDaysPlanned(p){
+  if(!p.startDate||!p.endDate) return 0;
+  return bizDaysBetween(parseDate(p.startDate),parseDate(p.endDate));
+}
+// 已用工作日 = 开始到 min(今天, 截止) 的工作日数
+function autoCalcWorkDaysUsed(p){
+  if(!p.startDate) return 0;
+  var sd=parseDate(p.startDate); if(!isValidDate(sd)) return 0;
+  var today=new Date(); today.setHours(0,0,0,0);
+  var ed=p.endDate?parseDate(p.endDate):today;
+  if(!isValidDate(ed)||ed>today) ed=today;
+  if(sd>today) return 0;
+  return bizDaysBetween(sd,ed);
+}
+// 对单个项目应用自动计算
+function refreshProjectAutoCalc(p){
+  if(!p) return;
+  if(p.autoProgress!==false){
+    var ap=autoCalcProgress(p.id);
+    if(ap>=0) p.progress=ap;
+  }
+  if(p.autoWorkDays!==false){
+    p.workDaysPlanned=autoCalcWorkDaysPlanned(p);
+    p.workDaysUsed=autoCalcWorkDaysUsed(p);
+  }
+}
+// 对所有项目应用自动计算
+function refreshAllAutoCalc(){
+  projects.forEach(refreshProjectAutoCalc);
+}
 
 /* ── Sample ── */
 function initSample(){
@@ -621,6 +710,7 @@ function initSample(){
     id:genId(),name:'市中心图书馆 RFID 智能馆系统',category:'新产品开发',status:'进行中',priority:'P0',
     owner:'张三',startDate:fmtDate(addDays(today,-30)),endDate:fmtDate(addDays(today,50)),progress:40,
     workDaysPlanned:65,workDaysUsed:26,
+    autoProgress:true,autoWorkDays:true,
     desc:'含自助借还、智能书架、盘点机器人、安防门禁，覆盖3层8000㎡',
     milestones:[
       {name:'需求评审',date:fmtDate(addDays(today,-15))},
@@ -630,13 +720,13 @@ function initSample(){
     ]
   }];
   tasks=[{
-    id:genId(),name:'RFID设备选型对比报告',projectId:projects[0].id,status:'已完成',priority:'P0',assignee:'张三',dueDate:fmtDate(addDays(today,-10))
+    id:genId(),name:'RFID设备选型对比报告',projectId:projects[0].id,status:'已完成',priority:'P0',assignee:'张三',dueDate:fmtDate(addDays(today,-10)),desc:'对比3家供应商：远望谷、海恒智能、阿法迪，含价格/性能/售后对比'
   },{
-    id:genId(),name:'OPAC检索SQL优化(已逾期)',projectId:projects[0].id,status:'进行中',priority:'P0',assignee:'王五',dueDate:fmtDate(addDays(today,-3))
+    id:genId(),name:'OPAC检索SQL优化(已逾期)',projectId:projects[0].id,status:'进行中',priority:'P0',assignee:'王五',dueDate:fmtDate(addDays(today,-3)),desc:'慢查询日志分析+索引优化，目标响应<200ms'
   },{
-    id:genId(),name:'数据库慢查询整改',projectId:projects[0].id,status:'待开始',priority:'P1',assignee:'王五',dueDate:fmtDate(addDays(today,2))
+    id:genId(),name:'数据库慢查询整改',projectId:projects[0].id,status:'待开始',priority:'P1',assignee:'王五',dueDate:fmtDate(addDays(today,2)),desc:''
   },{
-    id:genId(),name:'数字阅读平台UI评审',projectId:projects[0].id,status:'待开始',priority:'P1',assignee:'李四',dueDate:fmtDate(addDays(today,5))
+    id:genId(),name:'数字阅读平台UI评审',projectId:projects[0].id,status:'待开始',priority:'P1',assignee:'李四',dueDate:fmtDate(addDays(today,5)),desc:'含移动端适配方案'
   }];
   saveData();
 }
@@ -644,6 +734,7 @@ function initSample(){
 /* ── Init ── */
 loadData();
 if(projects.length===0) initSample();
+refreshAllAutoCalc();
 renderAll();
 // 探测后端是否在线
 probeServer(function(online){
@@ -865,9 +956,9 @@ function showDetail(pid){
     '<div class="detail-field"><label>分类</label><div class="val">'+p.category+' · <span style="color:#6B7280;font-weight:400">'+p.priority+'</span></div></div>'+
     '<div class="detail-field"><label>负责人</label><div class="val">'+es(p.owner||'未分配')+'</div></div>'+
     '<div class="detail-field"><label>时间</label><div class="val" style="font-size:13px">'+p.startDate+' ~ '+p.endDate+'</div></div>'+
-    '<div class="detail-field"><label>进度</label>'+
+    '<div class="detail-field"><label>进度'+(p.autoProgress!==false?' <span style="font-size:10px;color:var(--blue);font-weight:400;background:var(--blue-bg);padding:1px 6px;border-radius:8px">自动</span>':'')+'</label>'+
     '<div class="detail-progress"><div class="detail-progress-bar"><div class="fill" style="width:'+p.progress+'%;background:'+barColor+'"></div></div><span class="detail-progress-val">'+p.progress+'%</span></div></div>'+
-    '<div class="detail-field"><label>工作量</label><div class="val" style="font-size:13px">'+
+    '<div class="detail-field"><label>工作量'+(p.autoWorkDays!==false?' <span style="font-size:10px;color:var(--blue);font-weight:400;background:var(--blue-bg);padding:1px 6px;border-radius:8px">自动</span>':'')+'</label><div class="val" style="font-size:13px">'+
       '计划工作日：<b>'+(p.workDaysPlanned||0)+'天</b> &nbsp; 已用工作日：<b style="color:'+((p.workDaysUsed||0)>(p.workDaysPlanned||1)?'var(--danger)':'var(--text)')+'">'+(p.workDaysUsed||0)+'天</b>'+
       (p.workDaysPlanned>0?' &nbsp; (消耗 '+Math.round((p.workDaysUsed||0)/p.workDaysPlanned*100)+'%)':'')+
     '</div></div>';
@@ -892,7 +983,9 @@ function showDetail(pid){
       h+='<div class="task-card'+(daysUntil(t.dueDate)<0&&t.status!=='已完成'?' overdue':'')+'">'+
         '<div class="task-top"><span class="task-name" style="font-size:13px">'+es(t.name)+'</span>'+
         '<span class="task-state'+done+'" onclick="event.stopPropagation();toggleTask(\''+t.id+'\')"></span></div>'+
-        '<div class="task-meta"><span>'+es(t.assignee||'')+'</span><span>'+t.dueDate+'</span><span style="color:var(--text3)">'+t.status+'</span></div></div>';
+        '<div class="task-meta"><span>'+es(t.assignee||'')+'</span><span>'+t.dueDate+'</span><span style="color:var(--text3)">'+t.status+'</span></div>'+
+        (t.desc?'<div style="font-size:12px;color:var(--text2);margin-top:4px;padding:4px 8px;background:var(--border-lt);border-radius:4px">'+es(t.desc)+'</div>':'')+
+        '</div>';
     });
     h+='</div>';
   }
@@ -936,67 +1029,124 @@ function confirmDeleteTask(tid){
 
 /* ── Gantt Chart ── */
 function renderGantt(){
-  var active=projects.filter(function(p){return p.status!=='已交付';});
+  // 过滤掉日期无效的项目
+  var active=projects.filter(function(p){
+    return p.status!=='已交付' && p.startDate && p.endDate &&
+           isValidDate(parseDate(p.startDate)) && isValidDate(parseDate(p.endDate));
+  });
   if(active.length===0){
-    document.getElementById('ganttSvg').innerHTML='<div class="empty">暂无进行中项目</div>'; return;
+    document.getElementById('ganttSvg').innerHTML='<div class="empty"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg><p>暂无可显示的项目</p><p style="font-size:12px;margin-top:4px">需为进行中的项目设置开始和截止日期</p></div>'; return;
   }
 
   var catFill={'新产品开发':'#2563EB','老产品优化':'#0D9488','非标项目':'#D97706'};
   var today=new Date(); today.setHours(0,0,0,0);
-  var dates=[]; active.forEach(function(p){ dates.push(parseDate(p.startDate)); dates.push(parseDate(p.endDate)); });
-  var minD=new Date(Math.min.apply(null,dates)); minD.setDate(minD.getDate()-7);
-  var maxD=new Date(Math.max.apply(null,dates)); maxD.setDate(maxD.getDate()+7);
-  var totalDays=Math.ceil((maxD-minD)/(1000*60*60*24));
+  var dates=[];
+  active.forEach(function(p){
+    var sd=parseDate(p.startDate),ed=parseDate(p.endDate);
+    if(isValidDate(sd)) dates.push(sd);
+    if(isValidDate(ed)) dates.push(ed);
+  });
+  if(dates.length===0){ document.getElementById('ganttSvg').innerHTML='<div class="empty">日期数据异常</div>'; return; }
+  var minD=new Date(Math.min.apply(null,dates.map(function(d){return d.getTime();}))); minD.setDate(minD.getDate()-3);
+  var maxD=new Date(Math.max.apply(null,dates.map(function(d){return d.getTime();}))); maxD.setDate(maxD.getDate()+3);
+  var totalDays=Math.max(1,Math.ceil((maxD-minD)/(1000*60*60*24)));
 
-  var labelW=120, colH=36, headerH=36;
-  var dayW=Math.max(5,Math.min(16,Math.floor((window.innerWidth-labelW-32)/totalDays)));
+  var labelW=130, colH=40, headerH=40;
+  var availW=window.innerWidth-32;
+  var dayW=Math.max(4,Math.min(20,Math.floor((availW-labelW)/totalDays)));
   var chartW=totalDays*dayW, svgW=labelW+chartW+10, svgH=headerH+active.length*colH+10;
 
-  var svg='<svg viewBox="0 0 '+svgW+' '+svgH+'" width="'+svgW+'" height="'+svgH+'">';
+  var svg='<svg viewBox="0 0 '+svgW+' '+svgH+'" width="'+svgW+'" height="'+svgH+'" style="display:block">';
   svg+='<rect width="'+svgW+'" height="'+svgH+'" fill="#fff"/>';
 
-  // Header
+  // Header bg
   svg+='<rect x="0" y="0" width="'+svgW+'" height="'+headerH+'" fill="#F8FAFC"/>';
   svg+='<line x1="0" y1="'+headerH+'" x2="'+svgW+'" y2="'+headerH+'" stroke="#E2E8F0"/>';
+  svg+='<line x1="'+labelW+'" y1="0" x2="'+labelW+'" y2="'+svgH+'" stroke="#E2E8F0"/>';
 
-  // Month labels
-  var curM=-1;
+  // Month/week labels + grid
+  var curM=-1,curW=-1;
   for(var d=0;d<totalDays;d++){
     var dd=new Date(minD); dd.setDate(dd.getDate()+d);
+    var mx=labelW+d*dayW;
+    // Month label
     if(dd.getMonth()!==curM){
       curM=dd.getMonth();
-      var mx=labelW+d*dayW;
-      svg+='<text x="'+(mx+2)+'" y="'+(headerH-16)+'" font-size="10" fill="#94A3B8" font-family="sans-serif">'+(dd.getMonth()+1)+'月</text>';
-      svg+='<line x1="'+mx+'" y1="'+headerH+'" x2="'+mx+'" y2="'+svgH+'" stroke="#F1F5F9" stroke-width="1"/>';
+      svg+='<text x="'+(mx+2)+'" y="'+(headerH-18)+'" font-size="10" fill="#64748B" font-family="sans-serif" font-weight="600">'+(dd.getMonth()+1)+'月</text>';
+      svg+='<line x1="'+mx+'" y1="'+headerH+'" x2="'+mx+'" y2="'+svgH+'" stroke="#E2E8F0" stroke-width="1"/>';
+    }
+    // Week separator (every Monday)
+    var weekNum=Math.floor(d/7);
+    if(weekNum!==curW && d>0){
+      curW=weekNum;
+      svg+='<line x1="'+mx+'" y1="'+headerH+'" x2="'+mx+'" y2="'+svgH+'" stroke="#F1F5F9" stroke-width="0.5"/>';
+    }
+    // Date label (every 7 days or if dayW is wide enough)
+    if(dayW>=12 || d%7===0){
+      svg+='<text x="'+(mx+dayW/2)+'" y="'+(headerH-5)+'" font-size="8" fill="#94A3B8" text-anchor="middle" font-family="sans-serif">'+dd.getDate()+'</text>';
     }
   }
 
-  // Today
-  var todayX=labelW+Math.round((today-minD)/(1000*60*60*24))*dayW;
-  if(todayX>=labelW && todayX<svgW){
+  // Today line
+  var todayOffset=daysBetween(minD,today);
+  if(todayOffset>=0 && todayOffset<=totalDays){
+    var todayX=labelW+todayOffset*dayW+dayW/2;
     svg+='<line x1="'+todayX+'" y1="'+headerH+'" x2="'+todayX+'" y2="'+svgH+'" stroke="#EF4444" stroke-width="1.5" stroke-dasharray="4,3"/>';
-    svg+='<rect x="'+(todayX-14)+'" y="'+(headerH-14)+'" width="28" height="12" rx="3" fill="#EF4444"/>';
-    svg+='<text x="'+todayX+'" y="'+(headerH-4)+'" font-size="9" fill="#fff" text-anchor="middle" font-family="sans-serif" font-weight="700">今天</text>';
+    svg+='<rect x="'+(todayX-16)+'" y="'+(headerH-16)+'" width="32" height="13" rx="3" fill="#EF4444"/>';
+    svg+='<text x="'+todayX+'" y="'+(headerH-5)+'" font-size="9" fill="#fff" text-anchor="middle" font-family="sans-serif" font-weight="700">今天</text>';
   }
 
+  // Project bars
   active.forEach(function(p,ri){
-    var y=headerH+ri*colH, barY=y+7, barH=colH-14;
+    var y=headerH+ri*colH, barY=y+9, barH=colH-18;
     var sd=parseDate(p.startDate), ed=parseDate(p.endDate);
-    var sx=labelW+Math.round((sd-minD)/(1000*60*60*24))*dayW;
-    var ex=labelW+Math.round((ed-minD)/(1000*60*60*24))*dayW+dayW;
-    var bw=Math.max(ex-sx,dayW); var fill=catFill[p.category]||'#2563EB';
+    var sOffset=daysBetween(minD,sd), eOffset=daysBetween(minD,ed);
+    var sx=labelW+sOffset*dayW;
+    var ex=labelW+eOffset*dayW+dayW;
+    var bw=Math.max(ex-sx,dayW*2);
+    var fill=catFill[p.category]||'#2563EB';
     var opacity=p.status==='已暂停'?0.4:1;
+    var isOverdue=daysUntil(p.endDate)<0 && p.status!=='已暂停';
 
-    svg+='<text x="6" y="'+(y+colH/2+4)+'" font-size="11" fill="#0F172A" font-family="sans-serif" font-weight="600">'+es(p.name.length>10?p.name.substr(0,10)+'…':p.name)+'</text>';
+    // Row bg (alternating)
+    if(ri%2===1) svg+='<rect x="0" y="'+y+'" width="'+svgW+'" height="'+colH+'" fill="#F8FAFC" opacity="0.5"/>';
+
+    // Label
+    var shortName=p.name.length>10?p.name.substr(0,10)+'…':p.name;
+    svg+='<text x="6" y="'+(y+colH/2+4)+'" font-size="11" fill="#0F172A" font-family="sans-serif" font-weight="600">'+es(shortName)+'</text>';
+
+    // Bar background
     svg+='<rect x="'+sx+'" y="'+barY+'" width="'+bw+'" height="'+barH+'" rx="4" fill="'+fill+'" fill-opacity="0.15" opacity="'+opacity+'"/>';
-    if(p.progress>0) svg+='<rect x="'+sx+'" y="'+barY+'" width="'+Math.round(bw*p.progress/100)+'" height="'+barH+'" rx="4" fill="'+fill+'" fill-opacity="0.55" opacity="'+opacity+'"/>';
-    if(bw>40) svg+='<text x="'+(sx+bw/2)+'" y="'+(barY+barH/2+4)+'" font-size="9" fill="#fff" text-anchor="middle" font-family="sans-serif" font-weight="700">'+p.progress+'%</text>';
-    if(p.milestones)p.milestones.forEach(function(m){
-      var md=parseDate(m.date), mx=labelW+Math.round((md-minD)/(1000*60*60*24))*dayW+dayW/2;
-      svg+='<polygon points="'+mx+','+(y+colH/2-5)+' '+(mx+4)+','+(y+colH/2)+' '+mx+','+(y+colH/2+5)+' '+(mx-4)+','+(y+colH/2)+'" fill="#F59E0B" stroke="#fff" stroke-width="1"/>';
+
+    // Progress fill
+    var progW=Math.round(bw*(p.progress||0)/100);
+    if(progW>0) svg+='<rect x="'+sx+'" y="'+barY+'" width="'+progW+'" height="'+barH+'" rx="4" fill="'+fill+'" fill-opacity="0.6" opacity="'+opacity+'"/>';
+
+    // Progress text
+    if(bw>45) svg+='<text x="'+(sx+bw/2)+'" y="'+(barY+barH/2+3.5)+'" font-size="9" fill="#fff" text-anchor="middle" font-family="sans-serif" font-weight="700" opacity="'+opacity+'">'+(p.progress||0)+'%</text>';
+
+    // Overdue indicator
+    if(isOverdue){
+      svg+='<rect x="'+(ex-2)+'" y="'+(barY-2)+'" width="4" height="'+(barH+4)+'" rx="1" fill="#EF4444"/>';
+    }
+
+    // Milestones
+    if(p.milestones) p.milestones.forEach(function(m){
+      var md=parseDate(m.date);
+      if(!isValidDate(md)) return;
+      var mOffset=daysBetween(minD,md);
+      if(mOffset<0||mOffset>totalDays) return;
+      var mx=labelW+mOffset*dayW+dayW/2;
+      var my=y+colH/2;
+      svg+='<polygon points="'+mx+','+(my-5)+' '+(mx+4)+','+my+' '+mx+','+(my+5)+' '+(mx-4)+','+my+'" fill="#F59E0B" stroke="#fff" stroke-width="1"/>';
     });
+
+    // Click area
     svg+='<rect x="'+sx+'" y="'+barY+'" width="'+bw+'" height="'+barH+'" fill="transparent" style="cursor:pointer" onclick="showDetail(\''+p.id+'\')"/>';
+    // Label click area
+    svg+='<rect x="0" y="'+y+'" width="'+labelW+'" height="'+colH+'" fill="transparent" style="cursor:pointer" onclick="showDetail(\''+p.id+'\')"/>';
   });
+
   svg+='</svg>';
   document.getElementById('ganttSvg').innerHTML=svg;
 }
@@ -1031,6 +1181,7 @@ function renderTasks(){
         (dues===0&&!done?'<span style="color:var(--warn);font-weight:600">今天到期</span>':'')+
       '</div>';
     if(p) h+='<div class="task-project" style="color:'+(p.category==='新产品开发'?'var(--blue)':p.category==='老产品优化'?'var(--teal)':'var(--amber)')+'">'+es(p.name)+'</div>';
+    if(t.desc) h+='<div style="font-size:12px;color:var(--text2);margin-top:4px;padding:4px 8px;background:var(--border-lt);border-radius:4px">'+es(t.desc)+'</div>';
     h+='<div style="margin-top:6px;display:flex;gap:6px">'+
       '<button class="btn btn-sm" onclick="openTaskModal(\''+t.id+'\')">编辑</button>'+
       '<button class="btn btn-sm" style="color:var(--danger);border-color:transparent" onclick="confirmDeleteTask(\''+t.id+'\')">删除</button>'+
@@ -1190,7 +1341,10 @@ function setNameFilter(n){
 
 function toggleTask(tid){
   var t=tasks.find(function(x){return x.id===tid;}); if(!t) return;
-  t.status=t.status==='已完成'?'待开始':'已完成'; saveData(true); renderAll(); toast(t.status==='已完成'?'已完成 ✓':'已重新打开');
+  t.status=t.status==='已完成'?'待开始':'已完成';
+  // 自动刷新关联项目的进度
+  if(t.projectId){ var p=projects.find(function(x){return x.id===t.projectId;}); if(p) refreshProjectAutoCalc(p); }
+  saveData(true); renderAll(); toast(t.status==='已完成'?'已完成 ✓':'已重新打开');
   // 如果详情面板正打开，刷新面板
   if(document.getElementById('detailOverlay').classList.contains('open')){
     showDetail(t.projectId);
@@ -1225,51 +1379,203 @@ function showQuickMenu(){
 }
 
 /* ── Project Modal ── */
+var _autoProg=true, _autoWork=true;
+
 function openProjectModal(pid, defaultCat){
   editingProjId=pid;
   var isNew=!pid;
-  var p=isNew?{category:defaultCat||'新产品开发',status:'规划中',priority:'P1',owner:'',startDate:todayStr(),endDate:'',progress:0,desc:'',milestones:[]}:projects.find(function(x){return x.id===pid;});
+  var p=isNew?{category:defaultCat||'新产品开发',status:'规划中',priority:'P1',owner:'',startDate:todayStr(),endDate:'',progress:0,desc:'',milestones:[],autoProgress:true,autoWorkDays:true}:projects.find(function(x){return x.id===pid;});
   if(!p) return;
   editingMilestones=JSON.parse(JSON.stringify(p.milestones||[]));
+  _autoProg=p.autoProgress!==false;
+  _autoWork=p.autoWorkDays!==false;
+
+  var checkIcon='<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 11l3 3L22 4"/></svg>';
+  var infoIcon='<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="M12 8v4M12 16h.01"/></svg>';
 
   var h='<h3>'+(isNew?'新建项目':'编辑项目')+'</h3>'+
-    '<div class="form-group"><label>项目名称 *</label><input id="modPName" value="'+es(p.name||'')+'" placeholder="如：市中心图书馆 RFID 智能馆系统" oninput="scheduleAutoSave()"></div>'+
-    '<div class="form-row">'+
-      '<div class="form-group"><label>分类</label><select id="modPCat" onchange="scheduleAutoSave()"><option value="新产品开发"'+(p.category==='新产品开发'?' selected':'')+'>新产品开发</option><option value="老产品优化"'+(p.category==='老产品优化'?' selected':'')+'>老产品优化</option><option value="非标项目"'+(p.category==='非标项目'?' selected':'')+'>非标项目</option></select></div>'+
-      '<div class="form-group"><label>状态</label><select id="modPStatus" onchange="scheduleAutoSave()"><option value="规划中"'+(p.status==='规划中'?' selected':'')+'>规划中</option><option value="进行中"'+(p.status==='进行中'?' selected':'')+'>进行中</option><option value="已交付"'+(p.status==='已交付'?' selected':'')+'>已交付</option><option value="已暂停"'+(p.status==='已暂停'?' selected':'')+'>已暂停</option><option value="已取消"'+(p.status==='已取消'?' selected':'')+'>已取消</option></select></div>'+
+
+    // ── Section: 基本信息 ──
+    '<div class="form-section">'+
+      '<div class="form-section-title"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M20 21v-2a4 4 0 00-4-4H8a4 4 0 00-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>基本信息</div>'+
+      '<div class="form-group"><label>项目名称 <span class="label-badge">必填</span></label><input id="modPName" value="'+es(p.name||'')+'" placeholder="如：市中心图书馆 RFID 智能馆系统" oninput="scheduleAutoSave()"></div>'+
+      '<div class="form-row">'+
+        '<div class="form-group"><label>分类</label><select id="modPCat" onchange="scheduleAutoSave()"><option value="新产品开发"'+(p.category==='新产品开发'?' selected':'')+'>新产品开发</option><option value="老产品优化"'+(p.category==='老产品优化'?' selected':'')+'>老产品优化</option><option value="非标项目"'+(p.category==='非标项目'?' selected':'')+'>非标项目</option></select></div>'+
+        '<div class="form-group"><label>状态</label><select id="modPStatus" onchange="scheduleAutoSave()"><option value="规划中"'+(p.status==='规划中'?' selected':'')+'>规划中</option><option value="进行中"'+(p.status==='进行中'?' selected':'')+'>进行中</option><option value="已交付"'+(p.status==='已交付'?' selected':'')+'>已交付</option><option value="已暂停"'+(p.status==='已暂停'?' selected':'')+'>已暂停</option><option value="已取消"'+(p.status==='已取消'?' selected':'')+'>已取消</option></select></div>'+
+      '</div>'+
+      '<div class="form-row">'+
+        '<div class="form-group"><label>优先级</label><select id="modPPrio" onchange="scheduleAutoSave()"><option value="P0"'+(p.priority==='P0'?' selected':'')+'>P0 最高</option><option value="P1"'+(p.priority==='P1'?' selected':'')+'>P1 重要</option><option value="P2"'+(p.priority==='P2'?' selected':'')+'>P2 普通</option></select></div>'+
+        '<div class="form-group"><label>负责人</label><input id="modPOwner" value="'+es(p.owner||'')+'" placeholder="姓名" oninput="scheduleAutoSave()"></div>'+
+      '</div>'+
     '</div>'+
-    '<div class="form-row">'+
-      '<div class="form-group"><label>优先级</label><select id="modPPrio" onchange="scheduleAutoSave()"><option value="P0"'+(p.priority==='P0'?' selected':'')+'>P0 最高</option><option value="P1"'+(p.priority==='P1'?' selected':'')+'>P1 重要</option><option value="P2"'+(p.priority==='P2'?' selected':'')+'>P2 普通</option></select></div>'+
-      '<div class="form-group"><label>负责人</label><input id="modPOwner" value="'+es(p.owner||'')+'" placeholder="姓名" oninput="scheduleAutoSave()"></div>'+
+
+    // ── Section: 时间安排 ──
+    '<div class="form-section">'+
+      '<div class="form-section-title"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>时间安排</div>'+
+      '<div class="form-row">'+
+        '<div class="form-group"><label>开始日期</label><input type="date" id="modPStart" value="'+p.startDate+'" onchange="scheduleAutoSave();updateWorkAutoCalc()"></div>'+
+        '<div class="form-group"><label>截止日期</label><input type="date" id="modPEnd" value="'+p.endDate+'" onchange="scheduleAutoSave();updateWorkAutoCalc()"></div>'+
+      '</div>'+
+      '<div class="form-hint" id="dateHint">设置日期后自动计算工期</div>'+
     '</div>'+
-    '<div class="form-row">'+
-      '<div class="form-group"><label>开始日期</label><input type="date" id="modPStart" value="'+p.startDate+'" onchange="scheduleAutoSave()"></div>'+
-      '<div class="form-group"><label>截止日期</label><input type="date" id="modPEnd" value="'+p.endDate+'" onchange="scheduleAutoSave()"></div>'+
+
+    // ── Section: 进度与工作量 ──
+    '<div class="form-section">'+
+      '<div class="form-section-title"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 12h-4l-3 9L9 3l-3 9H2"/></svg>进度与工作量</div>'+
+
+      // Progress toggle
+      '<div class="form-group"><label>进度计算方式</label>'+
+        '<div class="toggle-group">'+
+          '<button class="toggle-btn'+(_autoProg?' active':'')+'" id="progAutoBtn" type="button" onclick="setProgMode(true)">自动计算</button>'+
+          '<button class="toggle-btn'+(!_autoProg?' active':'')+'" id="progManualBtn" type="button" onclick="setProgMode(false)">手动输入</button>'+
+        '</div>'+
+        '<div class="auto-calc-hint" id="progHint"></div>'+
+      '</div>'+
+      '<div class="form-row">'+
+        '<div class="form-group"><label>进度 (%)</label><input type="number" id="modPProg" value="'+p.progress+'" min="0" max="100" oninput="scheduleAutoSave()"></div>'+
+      '</div>'+
+
+      // Work days toggle
+      '<div class="form-group" style="margin-top:12px"><label>工时计算方式</label>'+
+        '<div class="toggle-group">'+
+          '<button class="toggle-btn'+(_autoWork?' active':'')+'" id="workAutoBtn" type="button" onclick="setWorkMode(true)">自动计算</button>'+
+          '<button class="toggle-btn'+(!_autoWork?' active':'')+'" id="workManualBtn" type="button" onclick="setWorkMode(false)">手动输入</button>'+
+        '</div>'+
+        '<div class="auto-calc-hint" id="workHint"></div>'+
+      '</div>'+
+      '<div class="form-row">'+
+        '<div class="form-group"><label>计划工作日 <span class="label-badge">天</span></label><input type="number" id="modPWPlan" value="'+(p.workDaysPlanned||0)+'" min="0" placeholder="预计投入人天" oninput="scheduleAutoSave()"></div>'+
+        '<div class="form-group"><label>已用工作日 <span class="label-badge">天</span></label><input type="number" id="modPWUsed" value="'+(p.workDaysUsed||0)+'" min="0" placeholder="实际已消耗人天" oninput="scheduleAutoSave()"></div>'+
+      '</div>'+
     '</div>'+
-    '<div class="form-row">'+
-      '<div class="form-group"><label>进度 (%)</label><input type="number" id="modPProg" value="'+p.progress+'" min="0" max="100" oninput="scheduleAutoSave()"></div>'+
+
+    // ── Section: 关键节点 ──
+    '<div class="form-section">'+
+      '<div class="form-section-title"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14.7 6.3a1 1 0 000 1.4l1.6 1.6a1 1 0 001.4 0l3.77-3.77a6 6 0 01-7.94 7.94l-6.91 6.91a2.12 2.12 0 01-3-3l6.91-6.91a6 6 0 017.94-7.94l-3.76 3.76z"/></svg>关键节点</div>'+
+      '<div id="modMilestones"></div>'+
+      '<button class="btn btn-sm" onclick="addMilestone()">+ 添加节点</button>'+
     '</div>'+
-    '<div class="form-row">'+
-      '<div class="form-group"><label>计划工作日（天）</label><input type="number" id="modPWPlan" value="'+(p.workDaysPlanned||0)+'" min="0" placeholder="预计投入人天" oninput="scheduleAutoSave()"></div>'+
-      '<div class="form-group"><label>已用工作日（天）</label><input type="number" id="modPWUsed" value="'+(p.workDaysUsed||0)+'" min="0" placeholder="实际已消耗人天" oninput="scheduleAutoSave()"></div>'+
+
+    // ── Section: 描述 ──
+    '<div class="form-section">'+
+      '<div class="form-group"><label>项目描述</label><textarea id="modPDesc" placeholder="项目简要描述…" oninput="scheduleAutoSave()">'+es(p.desc||'')+'</textarea></div>'+
     '</div>'+
-    '<div class="form-group"><label>描述</label><textarea id="modPDesc" placeholder="项目简要描述…" oninput="scheduleAutoSave()">'+es(p.desc||'')+'</textarea></div>'+
-    '<div class="form-group"><label>关键节点 <span style="font-weight:400;color:var(--text3)">（名称 + 日期）</span></label><div id="modMilestones"></div>'+
-    '<button class="btn btn-sm" onclick="addMilestone()">+ 添加节点</button></div>'+
+
     '<div class="modal-footer">'+
       '<button class="btn" onclick="closeModal()">取消</button>'+
       (isNew?'':'<button class="btn" style="color:var(--danger)" onclick="confirmDeleteProjectInModal(\''+pid+'\')">删除</button>')+
       '<button class="btn btn-primary" onclick="saveProject()">'+ (isNew?'创建':'保存') +'</button>'+
     '</div>';
+
   document.getElementById('modalBox').innerHTML=h;
   document.getElementById('modalOverlay').classList.add('open');
   renderMilestoneInputs();
+  // 初始化自动计算显示
+  updateProgAutoCalc();
+  updateWorkAutoCalc();
+}
+
+// 进度模式切换
+function setProgMode(auto){
+  _autoProg=auto;
+  document.getElementById('progAutoBtn').classList.toggle('active',auto);
+  document.getElementById('progManualBtn').classList.toggle('active',!auto);
+  updateProgAutoCalc();
+  scheduleAutoSave();
+}
+function updateProgAutoCalc(){
+  var progInput=document.getElementById('modPProg');
+  var progHint=document.getElementById('progHint');
+  if(!progInput||!progHint) return;
+  if(_autoProg){
+    var ap=autoCalcProgress(editingProjId);
+    if(ap>=0){
+      var pt=tasks.filter(function(t){return t.projectId===editingProjId;});
+      var done=pt.filter(function(t){return t.status==='已完成';}).length;
+      progInput.value=ap;
+      progInput.classList.add('input-disabled');
+      progHint.className='auto-calc-hint ok';
+      progHint.innerHTML='<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 11l3 3L22 4"/></svg>根据任务完成率自动计算：'+done+'/'+pt.length+' 任务完成 ('+ap+'%)';
+    } else {
+      // 无任务时按时间进度
+      var sd=(document.getElementById('modPStart')||{}).value||'';
+      var ed=(document.getElementById('modPEnd')||{}).value||'';
+      if(sd&&ed&&isValidDate(parseDate(sd))&&isValidDate(parseDate(ed))){
+        var today=new Date(); today.setHours(0,0,0,0);
+        var total=daysBetween(parseDate(sd),parseDate(ed));
+        var elapsed=daysBetween(parseDate(sd),today);
+        var tp=elapsed<=0?0:elapsed>=total?100:Math.round(elapsed/total*100);
+        progInput.value=tp;
+        progInput.classList.add('input-disabled');
+        progHint.className='auto-calc-hint ok';
+        progHint.innerHTML='<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 11l3 3L22 4"/></svg>暂无任务，按时间进度计算：'+elapsed+'/'+total+' 天 ('+tp+'%)';
+      } else {
+        progInput.classList.remove('input-disabled');
+        progHint.className='auto-calc-hint warn';
+        progHint.innerHTML='<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="M12 8v4M12 16h.01"/></svg>暂无任务和日期，请先添加任务或设置日期，或切换为手动输入';
+      }
+    }
+  } else {
+    progInput.classList.remove('input-disabled');
+    progHint.className='auto-calc-hint';
+    progHint.textContent='手动输入进度百分比（0-100）';
+  }
+}
+
+// 工时模式切换
+function setWorkMode(auto){
+  _autoWork=auto;
+  document.getElementById('workAutoBtn').classList.toggle('active',auto);
+  document.getElementById('workManualBtn').classList.toggle('active',!auto);
+  updateWorkAutoCalc();
+  scheduleAutoSave();
+}
+function updateWorkAutoCalc(){
+  var wPlanInput=document.getElementById('modPWPlan');
+  var wUsedInput=document.getElementById('modPWUsed');
+  var workHint=document.getElementById('workHint');
+  var dateHint=document.getElementById('dateHint');
+  if(!wPlanInput||!wUsedInput) return;
+
+  var sd=(document.getElementById('modPStart')||{}).value||'';
+  var ed=(document.getElementById('modPEnd')||{}).value||'';
+
+  // 更新日期提示
+  if(sd&&ed&&isValidDate(parseDate(sd))&&isValidDate(parseDate(ed))){
+    var totalDays=daysBetween(parseDate(sd),parseDate(ed));
+    var planned=bizDaysBetween(parseDate(sd),parseDate(ed));
+    dateHint.textContent='工期：'+totalDays+' 天 / '+planned+' 个工作日（不含周末）';
+    dateHint.classList.remove('warn');
+  } else {
+    dateHint.textContent='请设置开始和截止日期以自动计算工期';
+    dateHint.classList.add('warn');
+  }
+
+  if(_autoWork){
+    var planned2=autoCalcWorkDaysPlanned({startDate:sd,endDate:ed});
+    var used2=autoCalcWorkDaysUsed({startDate:sd,endDate:ed});
+    wPlanInput.value=planned2;
+    wUsedInput.value=used2;
+    wPlanInput.classList.add('input-disabled');
+    wUsedInput.classList.add('input-disabled');
+    if(workHint){
+      workHint.className='auto-calc-hint ok';
+      workHint.innerHTML='<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 11l3 3L22 4"/></svg>计划 '+planned2+' 工作日 | 已用 '+used2+' 工作日（按工作日自动计算，不含周末）';
+    }
+  } else {
+    wPlanInput.classList.remove('input-disabled');
+    wUsedInput.classList.remove('input-disabled');
+    if(workHint){
+      workHint.className='auto-calc-hint';
+      workHint.textContent='手动输入工作日天数';
+    }
+  }
 }
 
 function renderMilestoneInputs(){
   var h='';
   editingMilestones.forEach(function(m,i){
-    h+='<div class="milestone-row"><input value="'+es(m.name)+'" data-mi="'+i+'" data-field="name" placeholder="节点名称"><input type="date" value="'+m.date+'" data-mi="'+i+'" data-field="date" style="max-width:140px"><button class="btn btn-sm" style="color:var(--danger)" onclick="removeMilestone('+i+')">×</button></div>';
+    h+='<div class="milestone-row"><input value="'+es(m.name)+'" data-mi="'+i+'" data-field="name" placeholder="节点名称" oninput="scheduleAutoSave()"><input type="date" value="'+m.date+'" data-mi="'+i+'" data-field="date" style="max-width:140px" onchange="scheduleAutoSave()"><button class="btn btn-sm" style="color:var(--danger)" onclick="removeMilestone('+i+')">×</button></div>';
   });
   document.getElementById('modMilestones').innerHTML=h;
 }
@@ -1305,7 +1611,9 @@ function saveProject(){
     workDaysPlanned:Math.max(0,parseInt(document.getElementById('modPWPlan').value)||0),
     workDaysUsed:Math.max(0,parseInt(document.getElementById('modPWUsed').value)||0),
     desc:document.getElementById('modPDesc').value.trim(),
-    milestones:editingMilestones.filter(function(m){return m.name.trim();})
+    milestones:editingMilestones.filter(function(m){return m.name.trim();}),
+    autoProgress:_autoProg,
+    autoWorkDays:_autoWork
   };
 
   if(editingProjId){
@@ -1315,28 +1623,46 @@ function saveProject(){
   } else {
     data.id=genId(); projects.push(data);
   }
+  // 保存后应用自动计算（确保进度/工时是最新的）
+  refreshProjectAutoCalc(data);
   saveData(true); localStorage.removeItem('wb_lib_draft'); closeModal(); renderAll(); toast(editingProjId?'已更新':'项目已创建');
 }
 
 /* ── Task Modal ── */
 function openTaskModal(tid, presetProjectId){
-  var t=tid?tasks.find(function(x){return x.id===tid;}):{projectId:presetProjectId||'',name:'',assignee:'',status:'待开始',priority:'P1',dueDate:todayStr()};
+  var t=tid?tasks.find(function(x){return x.id===tid;}):{projectId:presetProjectId||'',name:'',assignee:'',status:'待开始',priority:'P1',dueDate:todayStr(),desc:''};
   if(!t) return;
 
   var projOpts='<option value="">-- 选择项目 --</option>';
   projects.forEach(function(p){ projOpts+='<option value="'+p.id+'"'+(t.projectId===p.id?' selected':'')+'>'+es(p.name)+'</option>'; });
 
   var h='<h3>'+(tid?'编辑任务':'新建任务')+'</h3>'+
-    '<div class="form-group"><label>任务名称 *</label><input id="modTName" value="'+es(t.name)+'" placeholder="如：RFID设备选型对比报告"></div>'+
-    '<div class="form-group"><label>所属项目</label><select id="modTProj">'+projOpts+'</select></div>'+
-    '<div class="form-row">'+
-      '<div class="form-group"><label>负责人</label><input id="modTAssignee" value="'+es(t.assignee||'')+'" placeholder="姓名"></div>'+
-      '<div class="form-group"><label>状态</label><select id="modTStatus"><option value="待开始"'+(t.status==='待开始'?' selected':'')+'>待开始</option><option value="进行中"'+(t.status==='进行中'?' selected':'')+'>进行中</option><option value="已完成"'+(t.status==='已完成'?' selected':'')+'>已完成</option></select></div>'+
+
+    // ── Section: 基本信息 ──
+    '<div class="form-section">'+
+      '<div class="form-section-title"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M20 21v-2a4 4 0 00-4-4H8a4 4 0 00-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>基本信息</div>'+
+      '<div class="form-group"><label>任务名称 <span class="label-badge">必填</span></label><input id="modTName" value="'+es(t.name)+'" placeholder="如：RFID设备选型对比报告"></div>'+
+      '<div class="form-group"><label>所属项目</label><select id="modTProj">'+projOpts+'</select></div>'+
+      '<div class="form-row">'+
+        '<div class="form-group"><label>负责人</label><input id="modTAssignee" value="'+es(t.assignee||'')+'" placeholder="姓名"></div>'+
+        '<div class="form-group"><label>优先级</label><select id="modTPrio"><option value="P0"'+(t.priority==='P0'?' selected':'')+'>P0 最高</option><option value="P1"'+(t.priority==='P1'?' selected':'')+'>P1 重要</option><option value="P2"'+(t.priority==='P2'?' selected':'')+'>P2 普通</option></select></div>'+
+      '</div>'+
     '</div>'+
-    '<div class="form-row">'+
-      '<div class="form-group"><label>优先级</label><select id="modTPrio"><option value="P0"'+(t.priority==='P0'?' selected':'')+'>P0</option><option value="P1"'+(t.priority==='P1'?' selected':'')+'>P1</option><option value="P2"'+(t.priority==='P2'?' selected':'')+'>P2</option></select></div>'+
-      '<div class="form-group"><label>截止日期</label><input type="date" id="modTDue" value="'+t.dueDate+'"></div>'+
+
+    // ── Section: 状态与时间 ──
+    '<div class="form-section">'+
+      '<div class="form-section-title"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>状态与时间</div>'+
+      '<div class="form-row">'+
+        '<div class="form-group"><label>状态</label><select id="modTStatus"><option value="待开始"'+(t.status==='待开始'?' selected':'')+'>待开始</option><option value="进行中"'+(t.status==='进行中'?' selected':'')+'>进行中</option><option value="已完成"'+(t.status==='已完成'?' selected':'')+'>已完成</option></select></div>'+
+        '<div class="form-group"><label>截止日期</label><input type="date" id="modTDue" value="'+t.dueDate+'"></div>'+
+      '</div>'+
     '</div>'+
+
+    // ── Section: 备注 ──
+    '<div class="form-section">'+
+      '<div class="form-group"><label>任务备注</label><textarea id="modTDesc" placeholder="任务详细说明、验收标准等…" style="min-height:48px">'+es(t.desc||'')+'</textarea></div>'+
+    '</div>'+
+
     '<div class="modal-footer">'+
       '<button class="btn" onclick="closeModal()">取消</button>'+
       (tid?'<button class="btn" style="color:var(--danger)" onclick="confirmDeleteTask(\''+tid+'\')">删除</button>':'')+
@@ -1355,10 +1681,13 @@ function saveTask(tid){
     assignee:document.getElementById('modTAssignee').value.trim(),
     status:document.getElementById('modTStatus').value,
     priority:document.getElementById('modTPrio').value,
-    dueDate:document.getElementById('modTDue').value
+    dueDate:document.getElementById('modTDue').value,
+    desc:document.getElementById('modTDesc').value.trim()
   };
   if(tid){ var idx=tasks.findIndex(function(x){return x.id===tid;}); if(idx>=0) tasks[idx]=data; }
   else tasks.push(data);
+  // 自动刷新关联项目的进度
+  if(data.projectId){ var p=projects.find(function(x){return x.id===data.projectId;}); if(p) refreshProjectAutoCalc(p); }
   saveData(true); closeModal(); renderAll(); toast(tid?'已更新':'任务已创建');
 }
 
