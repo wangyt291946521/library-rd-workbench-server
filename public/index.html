@@ -310,7 +310,7 @@ input[type="text"],input[type="date"],input[type="number"],select,textarea{font-
   <div class="topbar-title">
     <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="var(--blue)" stroke-width="2"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/></svg>
     图书馆研发工作台
-    <span class="ver-badge">v3.7</span>
+    <span class="ver-badge">v3.8</span>
   </div>
   <div class="topbar-actions">
     <span id="syncDot" class="sync-dot sync-offline" title="本地存储" style="margin-right:2px"></span>
@@ -1978,23 +1978,28 @@ function saveTask(tid){
 function closeModal(){ document.getElementById('modalOverlay').classList.remove('open'); editingProjId=null; }
 
 /* ── Worklog 工时登记 ── */
-// ── 任务级工时登记：填数字 → 确认保存，记录登记日期时间与工时 ──
-function openTaskWorklogModal(tid){
+// ── 任务级工时登记：填数字 → 确认保存，记录登记日期时间与工时；wid 传入则为二次编辑 ──
+function openTaskWorklogModal(tid, wid){
   var t=tasks.find(function(x){return x.id===tid;}); if(!t) return;
   var p=projects.find(function(x){return x.id===t.projectId;});
-  var h='<div class="modal-title" style="margin-bottom:16px">登记工时 · '+es(t.name)+'</div>'+
+  var w=wid?worklogs.find(function(x){return x.id===wid;}):null;
+  var isEdit=!!w;
+  var h='<div class="modal-title" style="margin-bottom:16px">'+(isEdit?'编辑工时 · ':'登记工时 · ')+es(t.name)+'</div>'+
     '<input type="hidden" id="twTaskId" value="'+esc(t.id)+'">'+
+    '<input type="hidden" id="twEditId" value="'+(wid?esc(wid):'')+'">'+
     '<div class="form-group"><label>所属项目</label><input value="'+es(p?p.name:'（未关联项目）')+'" readonly style="background:var(--border-lt);color:var(--text2)"></div>'+
     '<div class="form-row">'+
       '<div class="form-group"><label>工时数 <span class="label-badge">小时</span> <span style="color:var(--danger)">*</span></label>'+
-        '<input type="number" id="twHours" value="4" min="0.5" max="24" step="0.5" placeholder="如：4"></div>'+
-      '<div class="form-group"><label>记录人</label><input id="twPerson" value="'+esc(t.assignee||'')+'" placeholder="姓名（默认任务负责人）"></div>'+
+        '<input type="number" id="twHours" value="'+(isEdit?w.hours:'4')+'" min="0.5" max="24" step="0.5" placeholder="如：4"></div>'+
+      '<div class="form-group"><label>记录人</label><input id="twPerson" value="'+esc(isEdit?(w.person||''):(t.assignee||''))+'" placeholder="姓名（默认任务负责人）"></div>'+
     '</div>'+
-    '<div class="form-group"><label>备注</label><input id="twNote" placeholder="做了什么（可选）"></div>'+
-    '<div style="font-size:12px;color:var(--text3);margin:4px 0 10px">登记后自动记录时间 <b style="color:var(--blue)">'+nowStamp()+'</b>，并按 <b style="color:var(--blue)">7.5 小时 = 1 天</b> 折算叠加到项目已用工作日</div>'+
+    '<div class="form-group"><label>备注</label><input id="twNote" value="'+esc(isEdit?(w.note||''):'')+'" placeholder="做了什么（可选）"></div>'+
+    '<div style="font-size:12px;color:var(--text3);margin:4px 0 10px">'+(isEdit
+      ?'将更新原登记（登记时间 '+es(w.createdAt||w.date)+' 保持不变），并按 <b style="color:var(--blue)">7.5 小时 = 1 天</b> 折算叠加到项目已用工作日'
+      :'登记后自动记录时间 <b style="color:var(--blue)">'+nowStamp()+'</b>，并按 <b style="color:var(--blue)">7.5 小时 = 1 天</b> 折算叠加到项目已用工作日')+'</div>'+
     '<div class="modal-footer">'+
       '<button class="btn" onclick="closeModal()">取消</button>'+
-      '<button class="btn btn-primary" onclick="saveTaskWorklog()">确认保存</button>'+
+      '<button class="btn btn-primary" onclick="saveTaskWorklog()">'+(isEdit?'保存修改':'确认保存')+'</button>'+
     '</div>'+
     '<div style="margin-top:14px;border-top:1px solid var(--border-lt);padding-top:12px">'+
       '<div id="twRecentTitle" style="font-size:12px;color:var(--text3);margin-bottom:8px"></div>'+
@@ -2018,6 +2023,7 @@ function renderTaskWorklogRecent(){
       '<span style="color:var(--text3)">'+(w.createdAt?es(w.createdAt):es(w.date))+'</span>'+
       '<span style="flex:1;color:var(--text2);overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="'+es(w.note||'')+'">'+(w.note?es(w.note):'')+'</span>'+
       '<b>'+fmtHours(w.hours)+'h</b>'+
+      '<button class="btn btn-sm" style="padding:2px 6px" onclick="editWorklog(\''+w.id+'\')">编辑</button>'+
       '<button class="btn btn-sm" style="color:var(--danger);padding:2px 6px" onclick="delWorklog(\''+w.id+'\')">删除</button>'+
     '</div>';
   });
@@ -2026,50 +2032,68 @@ function renderTaskWorklogRecent(){
 function saveTaskWorklog(){
   var tid=document.getElementById('twTaskId').value;
   var t=tasks.find(function(x){return x.id===tid;}); if(!t) return;
+  var editId=(document.getElementById('twEditId')||{}).value||'';
   var hours=parseFloat(document.getElementById('twHours').value);
   var person=(document.getElementById('twPerson').value||'').trim()||t.assignee||'未填写';
   var note=(document.getElementById('twNote').value||'').trim();
   if(!hours||isNaN(hours)||hours<=0){ toast('请填写正确的工时数'); return; }
   if(hours>24){ toast('单次登记不超过 24 小时'); return; }
-  worklogs.push({id:genId(), projectId:t.projectId, taskId:tid, person:person, date:todayStr(), createdAt:nowStamp(), hours:hours, note:note});
-  var p=projects.find(function(x){return x.id===t.projectId;});
-  if(p && p.autoProgress!==false) refreshProjectAutoCalc(p);
-  saveData(true);
-  renderAll();
-  renderTaskWorklogRecent();
-  document.getElementById('twHours').value='';
-  document.getElementById('twNote').value='';
-  toast('已登记 '+person+' '+fmtHours(hours)+' 小时 ✓');
+  if(editId){
+    var w=worklogs.find(function(x){return x.id===editId;}); if(!w) return;
+    w.person=person; w.hours=hours; w.note=note; // 保留原登记时间 createdAt/date
+    var p=projects.find(function(x){return x.id===w.projectId;});
+    if(p && p.autoProgress!==false) refreshProjectAutoCalc(p);
+    saveData(true);
+    renderAll();
+    renderTaskWorklogRecent();
+    document.getElementById('twHours').value='';
+    document.getElementById('twNote').value='';
+    document.getElementById('twEditId').value='';
+    toast('已更新 '+person+' '+fmtHours(hours)+' 小时 ✓');
+  } else {
+    worklogs.push({id:genId(), projectId:t.projectId, taskId:tid, person:person, date:todayStr(), createdAt:nowStamp(), hours:hours, note:note});
+    var p=projects.find(function(x){return x.id===t.projectId;});
+    if(p && p.autoProgress!==false) refreshProjectAutoCalc(p);
+    saveData(true);
+    renderAll();
+    renderTaskWorklogRecent();
+    document.getElementById('twHours').value='';
+    document.getElementById('twNote').value='';
+    toast('已登记 '+person+' '+fmtHours(hours)+' 小时 ✓');
+  }
 }
-// 打开登记弹窗；pid 可选（从项目详情带出）
-function openWorklogModal(pid){
+// 打开登记弹窗；pid 可选（从项目详情带出）；wid 传入则为二次编辑
+function openWorklogModal(pid, wid){
+  var w=wid?worklogs.find(function(x){return x.id===wid;}):null;
+  var isEdit=!!w;
   var sel='';
   projects.forEach(function(p){
-    sel+='<option value="'+esc(p.id)+'"'+(p.id===pid?' selected':'')+'>'+es(p.name)+'</option>';
+    sel+='<option value="'+esc(p.id)+'"'+((isEdit?w.projectId:pid)===p.id?' selected':'')+'>'+es(p.name)+'</option>';
   });
   if(!projects.length) sel='<option value="">（暂无项目，请先新建）</option>';
   // 常用记录人：按登记总工时取 Top5
   var pm=worklogHoursByPerson(), names=Object.keys(pm).sort(function(a,b){return pm[b].hours-pm[a].hours;}).slice(0,5);
   var chips='';
   names.forEach(function(n){ chips+='<span class="wl-person-chip" onclick="pickPerson(\''+esc(n)+'\')">'+es(n)+'</span>'; });
-  var h='<div class="modal-title" style="margin-bottom:16px">登记工时</div>'+
+  var h='<div class="modal-title" style="margin-bottom:16px">'+(isEdit?'编辑工时登记':'登记工时')+'</div>'+
+    '<input type="hidden" id="wlEditId" value="'+(wid?esc(wid):'')+'">'+
     '<div class="form-group"><label>项目 <span style="color:var(--danger)">*</span></label>'+
       '<select id="wlProj">'+sel+'</select></div>'+
     '<div class="form-group"><label>记录人 <span style="color:var(--danger)">*</span></label>'+
-      '<input id="wlPerson" placeholder="姓名" value="'+(names[0]?esc(names[0]):'')+'">'+
+      '<input id="wlPerson" placeholder="姓名" value="'+esc(isEdit?(w.person||''):(names[0]||''))+'">'+
       (chips?'<div style="margin-top:6px;display:flex;flex-wrap:wrap;gap:6px">'+chips+'</div>':'')+
     '</div>'+
     '<div class="form-row">'+
-      '<div class="form-group"><label>日期</label><input type="date" id="wlDate" value="'+fmtDate(new Date())+'"></div>'+
-      '<div class="form-group"><label>工时数 <span class="label-badge">小时</span></label><input type="number" id="wlHours" value="4" min="0.5" max="24" step="0.5"></div>'+
+      '<div class="form-group"><label>日期</label><input type="date" id="wlDate" value="'+(isEdit?(w.date||fmtDate(new Date())):fmtDate(new Date()))+'"></div>'+
+      '<div class="form-group"><label>工时数 <span class="label-badge">小时</span></label><input type="number" id="wlHours" value="'+(isEdit?w.hours:'4')+'" min="0.5" max="24" step="0.5"></div>'+
     '</div>'+
-    '<div class="form-group"><label>备注</label><input id="wlNote" placeholder="做了什么（可选）"></div>'+
+    '<div class="form-group"><label>备注</label><input id="wlNote" value="'+esc(isEdit?(w.note||''):'')+'" placeholder="做了什么（可选）"></div>'+
     '<div class="modal-footer">'+
       '<button class="btn" onclick="closeModal()">取消</button>'+
-      '<button class="btn btn-primary" onclick="saveWorklog()">保存登记</button>'+
+      '<button class="btn btn-primary" onclick="saveWorklog()">'+(isEdit?'保存修改':'保存登记')+'</button>'+
     '</div>'+
     '<div style="margin-top:18px;border-top:1px solid var(--border-lt);padding-top:12px">'+
-      '<div style="font-size:12px;color:var(--text3);margin-bottom:8px">最近登记记录（点击删除可撤销误登记）</div>'+
+      '<div style="font-size:12px;color:var(--text3);margin-bottom:8px">最近登记记录（可编辑或删除）</div>'+
       '<div id="wlRecent"></div>'+
     '</div>';
   document.getElementById('modalBox').innerHTML=h;
@@ -2091,13 +2115,15 @@ function renderWorklogRecent(){
       '<span style="color:var(--text2)">'+es(w.person)+'</span>'+
       '<span style="color:var(--text3)">'+es(w.createdAt||w.date)+'</span>'+
       '<b>'+fmtHours(w.hours)+'h</b>'+
+      '<button class="btn btn-sm" style="padding:2px 6px" onclick="editWorklog(\''+w.id+'\')">编辑</button>'+
       '<button class="btn btn-sm" style="color:var(--danger);padding:2px 6px" onclick="delWorklog(\''+w.id+'\')">删除</button>'+
     '</div>';
   });
   box.innerHTML=h;
 }
-// 保存登记（立即同步后端）
+// 保存登记（立即同步后端）；编辑模式下更新原记录
 function saveWorklog(){
+  var editId=(document.getElementById('wlEditId')||{}).value||'';
   var pid=document.getElementById('wlProj').value;
   var person=(document.getElementById('wlPerson').value||'').trim();
   var date=document.getElementById('wlDate').value;
@@ -2107,16 +2133,39 @@ function saveWorklog(){
   if(!person){ toast('请填写记录人'); return; }
   if(!date){ toast('请选择日期'); return; }
   if(!hours||isNaN(hours)||hours<=0){ toast('请填写正确的工时数'); return; }
-  worklogs.push({id:genId(), projectId:pid, person:person, date:date, createdAt:nowStamp(), hours:hours, note:note});
-  // 自动进度项目：用新规则（工时优先）刷新
-  var p=projects.find(function(x){return x.id===pid;});
-  if(p && p.autoProgress!==false){ refreshProjectAutoCalc(p); }
-  saveData(true);
-  renderAll();
-  renderWorklogRecent();
-  document.getElementById('wlHours').value='';
-  document.getElementById('wlNote').value='';
-  toast('已登记 '+person+' '+hours+' 小时 ✓');
+  if(editId){
+    var w=worklogs.find(function(x){return x.id===editId;}); if(!w) return;
+    var oldPid=w.projectId;
+    w.projectId=pid; w.person=person; w.date=date; w.hours=hours; w.note=note; // 保留原登记时间 createdAt
+    var oldP=projects.find(function(x){return x.id===oldPid;});
+    var newP=projects.find(function(x){return x.id===pid;});
+    if(oldP && oldP!==newP && oldP.autoProgress!==false) refreshProjectAutoCalc(oldP);
+    if(newP && newP.autoProgress!==false) refreshProjectAutoCalc(newP);
+    saveData(true);
+    renderAll();
+    renderWorklogRecent();
+    document.getElementById('wlHours').value='';
+    document.getElementById('wlNote').value='';
+    document.getElementById('wlEditId').value='';
+    toast('已更新登记 ✓');
+  } else {
+    worklogs.push({id:genId(), projectId:pid, person:person, date:date, createdAt:nowStamp(), hours:hours, note:note});
+    // 自动进度项目：用新规则（工时优先）刷新
+    var p=projects.find(function(x){return x.id===pid;});
+    if(p && p.autoProgress!==false){ refreshProjectAutoCalc(p); }
+    saveData(true);
+    renderAll();
+    renderWorklogRecent();
+    document.getElementById('wlHours').value='';
+    document.getElementById('wlNote').value='';
+    toast('已登记 '+person+' '+hours+' 小时 ✓');
+  }
+}
+// 二次编辑：任务级记录打开任务弹窗，项目级打开项目弹窗（均预填原数据）
+function editWorklog(wid){
+  var w=worklogs.find(function(x){return x.id===wid;}); if(!w) return;
+  if(w.taskId) openTaskWorklogModal(w.taskId, w.id);
+  else openWorklogModal(w.projectId, w.id);
 }
 // 删除误登记
 function delWorklog(wid){
@@ -2144,6 +2193,7 @@ function viewWorklogDetail(pid){
         '<span style="color:var(--text3)">'+es(w.createdAt||w.date)+'</span>'+
         '<span style="flex:1;color:var(--text2);overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="'+es(w.note||'')+'">'+(w.note?es(w.note):'')+'</span>'+
         '<b>'+fmtHours(w.hours)+'h</b>'+
+        '<button class="btn btn-sm" style="padding:2px 6px" onclick="editWorklog(\''+w.id+'\')">编辑</button>'+
         '<button class="btn btn-sm" style="color:var(--danger);padding:2px 6px" onclick="delWorklog(\''+w.id+'\');setTimeout(function(){viewWorklogDetail(\''+pid+'\');},50)">删除</button>'+
       '</div>';
     });
