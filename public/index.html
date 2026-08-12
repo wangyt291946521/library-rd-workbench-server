@@ -130,11 +130,13 @@ input[type="text"],input[type="date"],input[type="number"],select,textarea{font-
 .task-card.overdue{border-left:3px solid var(--danger)}
 .task-card .task-top{display:flex;align-items:flex-start;justify-content:space-between;gap:8px}
 .task-card .task-name{font-size:14px;font-weight:600;flex:1}
-.task-card .task-state{display:inline-flex;align-items:center;justify-content:center;width:24px;height:24px;border-radius:50%;border:2px solid var(--border);cursor:pointer;flex-shrink:0;transition:all .15s}
-.task-card .task-state.done{background:var(--success);border-color:var(--success)}
-.task-card .task-state.done::after{content:'';display:block;width:6px;height:10px;border:solid #fff;border-width:0 2px 2px 0;transform:rotate(45deg);margin-top:-2px}
 .task-card .task-meta{display:flex;flex-wrap:wrap;gap:8px;margin-top:6px;font-size:12px;color:var(--text2)}
 .task-card .task-project{font-size:12px;font-weight:600;margin-top:4px}
+/* 任务级工时登记与完成按钮 */
+.task-card .task-hours{display:inline-flex;align-items:center;gap:3px;font-size:11px;font-weight:600;color:var(--blue);background:var(--blue-bg);border:1px solid rgba(37,99,235,.2);padding:1px 8px;border-radius:10px;flex-shrink:0;white-space:nowrap}
+.btn-sm.task-complete-btn{background:var(--success);border-color:var(--success);color:#fff;font-weight:600}
+.btn-sm.task-done-btn{border-color:var(--success);color:var(--success);font-weight:600}
+.btn-sm.wl-btn{border-color:var(--blue);color:var(--blue);font-weight:600}
 
 /* ── Modal ── */
 .modal-overlay{position:fixed;inset:0;z-index:300;display:none;align-items:flex-end;justify-content:center}
@@ -308,7 +310,7 @@ input[type="text"],input[type="date"],input[type="number"],select,textarea{font-
   <div class="topbar-title">
     <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="var(--blue)" stroke-width="2"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/></svg>
     图书馆研发工作台
-    <span class="ver-badge">v3.5</span>
+    <span class="ver-badge">v3.7</span>
   </div>
   <div class="topbar-actions">
     <span id="syncDot" class="sync-dot sync-offline" title="本地存储" style="margin-right:2px"></span>
@@ -635,7 +637,7 @@ function autoSaveDraft(){
     progress:parseInt((document.getElementById('modPProg')||{}).value)||0,
     desc:(document.getElementById('modPDesc')||{}).value||'',
     workDaysPlanned:parseInt((document.getElementById('modPWPlan')||{}).value)||0,
-    workDaysUsed:parseInt((document.getElementById('modPWUsed')||{}).value)||0,
+    workDaysUsed:parseFloat((document.getElementById('modPWUsed')||{}).value)||0,
     milestones:editingMilestones,
     autoProgress:_autoProg,
     autoWorkDays:_autoWork
@@ -701,8 +703,10 @@ function autoCalcWorkDaysPlanned(p){
   if(!p.startDate||!p.endDate) return 0;
   return bizDaysBetween(parseDate(p.startDate),parseDate(p.endDate));
 }
-// 已用工作日 = 开始到 min(今天, 截止) 的工作日数
+// 已用工作日 = 项目累计登记工时折算（7.5 小时 = 1 天）；无登记工时则按开始到 min(今天,截止) 的工作日数推算
 function autoCalcWorkDaysUsed(p){
+  var logged=hoursUsedOfProject(p.id);
+  if(logged>0) return Math.round(logged/HOURS_PER_DAY*10)/10;
   if(!p.startDate) return 0;
   var sd=parseDate(p.startDate); if(!isValidDate(sd)) return 0;
   var today=new Date(); today.setHours(0,0,0,0);
@@ -729,12 +733,31 @@ function refreshAllAutoCalc(){
 }
 
 /* ── Worklog 工时与工作量计算（设计文档 §3） ── */
-var HOURS_PER_DAY=8;            // 1 人天 = 8 小时
+var HOURS_PER_DAY=7.5;          // 1 人天 = 7.5 小时（登记工时按此折算为已用工作日）
 var PROG_W_E=0.7, PROG_W_T=0.3; // 综合进度权重：工时为主、时间为辅
 
 // 项目登记工时合计（小时）
 function hoursUsedOfProject(pid){
   return (worklogs||[]).filter(function(w){return w.projectId===pid;}).reduce(function(s,w){return s+(+w.hours||0);},0);
+}
+// 任务登记工时合计（小时）
+function hoursUsedOfTask(tid){
+  return (worklogs||[]).filter(function(w){return w.taskId===tid;}).reduce(function(s,w){return s+(+w.hours||0);},0);
+}
+// 任务登记明细（时间倒序）
+function worklogListByTask(tid){
+  return (worklogs||[]).filter(function(w){return w.taskId===tid;}).sort(function(a,b){return (a.createdAt||a.date)<(b.createdAt||b.date)?1:-1;});
+}
+// 当前登记时间戳 YYYY-MM-DD HH:mm
+function nowStamp(){
+  var d=new Date();
+  function p(n){ return (n<10?'0':'')+n; }
+  return d.getFullYear()+'-'+p(d.getMonth()+1)+'-'+p(d.getDate())+' '+p(d.getHours())+':'+p(d.getMinutes());
+}
+// 小时格式化：整数不带小数，否则保留 1 位
+function fmtHours(h){
+  h=Math.round((+h||0)*10)/10;
+  return h%1===0?String(h):h.toFixed(1);
 }
 // 项目计划小时 = 计划人天 × 8
 function hoursPlannedOf(p){ return (p.workDaysPlanned||0)*HOURS_PER_DAY; }
@@ -995,10 +1018,13 @@ function renderKanban(){
       h+='<div class="kcard-row"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 11l3 3L22 4"/><path d="M21 12v7a2 2 0 01-2 2H5a2 2 0 01-2-2V5a2 2 0 012-2h11"/></svg>'+taskDone+'/'+taskCount+' 任务</div>';
     }
     h+='<div class="kcard-progress"><div class="kcard-progress-bar"><div class="kcard-progress-fill" style="width:'+p.progress+'%;background:'+barColor+'"></div></div><span class="kcard-progress-txt">'+p.progress+'%</span></div>';
-    // workload bar
+    // workload bar（已用工作日由登记工时折算，7.5 小时 = 1 天）
     if(p.workDaysPlanned>0){
+      var wlUsed=fmtHours(p.workDaysUsed);
       var wlPct=Math.min(100,Math.round((p.workDaysUsed||0)/p.workDaysPlanned*100));
-      h+='<div class="wl-row"><span class="wl-txt">工时 '+p.workDaysUsed+'/'+p.workDaysPlanned+'天</span><div class="wl-bar"><div class="wl-fill" style="width:'+wlPct+'%"></div></div></div>';
+      var wlTip='已用工作日 '+wlUsed+' 天';
+      if(hoursUsedOfProject(p.id)>0) wlTip+='（登记 '+fmtHours(hoursUsedOfProject(p.id))+' 小时折算）';
+      h+='<div class="wl-row" title="'+wlTip+'"><span class="wl-txt">工时 '+wlUsed+'/'+p.workDaysPlanned+'天</span><div class="wl-bar"><div class="wl-fill" style="width:'+wlPct+'%"></div></div></div>';
     }
 
     // milestone dots
@@ -1146,7 +1172,8 @@ function showDetail(pid){
     '<div class="detail-field"><label>进度'+(p.autoProgress!==false?' <span style="font-size:10px;color:var(--blue);font-weight:400;background:var(--blue-bg);padding:1px 6px;border-radius:8px">自动</span>':'')+'</label>'+
     '<div class="detail-progress"><div class="detail-progress-bar"><div class="fill" style="width:'+p.progress+'%;background:'+barColor+'"></div></div><span class="detail-progress-val">'+p.progress+'%</span></div></div>'+
     '<div class="detail-field"><label>工作量'+(p.autoWorkDays!==false?' <span style="font-size:10px;color:var(--blue);font-weight:400;background:var(--blue-bg);padding:1px 6px;border-radius:8px">自动</span>':'')+'</label><div class="val" style="font-size:13px">'+
-      '计划工作日：<b>'+(p.workDaysPlanned||0)+'天</b> &nbsp; 已用工作日：<b style="color:'+((p.workDaysUsed||0)>(p.workDaysPlanned||1)?'var(--danger)':'var(--text)')+'">'+(p.workDaysUsed||0)+'天</b>'+
+      '计划工作日：<b>'+(p.workDaysPlanned||0)+'天</b> &nbsp; 已用工作日：<b style="color:'+((p.workDaysUsed||0)>(p.workDaysPlanned||1)?'var(--danger)':'var(--text)')+'">'+fmtHours(p.workDaysUsed)+'天</b>'+
+      (hoursUsedOfProject(p.id)>0?' &nbsp; <span style="color:var(--text3)">(登记 '+fmtHours(hoursUsedOfProject(p.id))+' 小时 ≈ '+fmtHours(hoursUsedOfProject(p.id)/HOURS_PER_DAY)+' 天)</span>':'')+
       (p.workDaysPlanned>0?' &nbsp; (消耗 '+Math.round((p.workDaysUsed||0)/p.workDaysPlanned*100)+'%)':'')+
     '</div></div>';
 
@@ -1166,12 +1193,20 @@ function showDetail(pid){
   if(taskList.length>0){
     h+='<div class="detail-field"><label>关联任务 ('+taskList.length+')</label>';
     taskList.forEach(function(t){
-      var done=t.status==='已完成'?' done':'';
+      var done=t.status==='已完成';
+      var th=hoursUsedOfTask(t.id);
       h+='<div class="task-card'+(daysUntil(t.dueDate)<0&&t.status!=='已完成'?' overdue':'')+'">'+
         '<div class="task-top"><span class="task-name" style="font-size:13px">'+es(t.name)+'</span>'+
-        '<span class="task-state'+done+'" onclick="event.stopPropagation();toggleTask(\''+t.id+'\')"></span></div>'+
+        (th>0?'<span class="task-hours" title="已登记 '+fmtHours(th)+' 小时">⏱ '+fmtHours(th)+'h</span>':'')+
+        '</div>'+
         '<div class="task-meta"><span>'+es(t.assignee||'')+'</span><span>'+t.dueDate+'</span><span style="color:var(--text3)">'+t.status+'</span></div>'+
         (t.desc?'<div style="font-size:12px;color:var(--text2);margin-top:4px;padding:4px 8px;background:var(--border-lt);border-radius:4px">'+es(t.desc)+'</div>':'')+
+        '<div style="margin-top:8px;display:flex;flex-wrap:wrap;gap:6px">'+
+          '<button class="btn btn-sm wl-btn" onclick="event.stopPropagation();openTaskWorklogModal(\''+t.id+'\')">⏱ 记工时</button>'+
+          (done
+            ?'<button class="btn btn-sm task-done-btn" onclick="event.stopPropagation();toggleTask(\''+t.id+'\')">已完成 ✓</button>'
+            :'<button class="btn btn-sm task-complete-btn" onclick="event.stopPropagation();toggleTask(\''+t.id+'\')">完成</button>')+
+        '</div>'+
         '</div>';
     });
     h+='</div>';
@@ -1358,10 +1393,11 @@ function renderTasks(){
     var p=projects.find(function(x){return x.id===t.projectId;});
     var dues=daysUntil(t.dueDate), done=t.status==='已完成';
     var cls='task-card'+(dues<0&&!done?' overdue':'');
-    var doneCls=done?' done':'';
+    var th=hoursUsedOfTask(t.id);
     h+='<div class="'+cls+'">'+
       '<div class="task-top"><span class="task-name">'+es(t.name)+'</span>'+
-      '<span class="task-state'+doneCls+'" onclick="toggleTask(\''+t.id+'\')"></span></div>'+
+      (th>0?'<span class="task-hours" title="该任务已登记 '+fmtHours(th)+' 小时（约 '+fmtHours(th/HOURS_PER_DAY)+' 个工作日）">⏱ '+fmtHours(th)+'h</span>':'')+
+      '</div>'+
       '<div class="task-meta">'+
         '<span>'+es(t.assignee||'未分配')+'</span><span>'+t.dueDate+'</span>'+
         (dues<0&&!done?'<span style="color:var(--danger);font-weight:600">逾期'+Math.abs(dues)+'天</span>':'')+
@@ -1369,7 +1405,11 @@ function renderTasks(){
       '</div>';
     if(p) h+='<div class="task-project" style="color:'+(p.category==='新产品开发'?'var(--blue)':p.category==='老产品优化'?'var(--teal)':'var(--amber)')+'">'+es(p.name)+'</div>';
     if(t.desc) h+='<div style="font-size:12px;color:var(--text2);margin-top:4px;padding:4px 8px;background:var(--border-lt);border-radius:4px">'+es(t.desc)+'</div>';
-    h+='<div style="margin-top:6px;display:flex;gap:6px">'+
+    h+='<div style="margin-top:8px;display:flex;flex-wrap:wrap;gap:6px">'+
+      '<button class="btn btn-sm wl-btn" onclick="openTaskWorklogModal(\''+t.id+'\')">⏱ 记工时</button>'+
+      (done
+        ?'<button class="btn btn-sm task-done-btn" onclick="toggleTask(\''+t.id+'\')">已完成 ✓</button>'
+        :'<button class="btn btn-sm task-complete-btn" onclick="toggleTask(\''+t.id+'\')">完成</button>')+
       '<button class="btn btn-sm" onclick="openTaskModal(\''+t.id+'\')">编辑</button>'+
       '<button class="btn btn-sm" style="color:var(--danger);border-color:transparent" onclick="confirmDeleteTask(\''+t.id+'\')">删除</button>'+
     '</div></div>';
@@ -1455,7 +1495,7 @@ function renderStatsView(){
   // ── 整体工作量 ──
   if(totalPlanned>0){
     var wPct=Math.round(totalUsed/totalPlanned*100);
-    h+='<div style="margin:16px 0 8px;font-size:13px;color:var(--text2)">总工时消耗：<b>'+totalUsed+'</b> / <b>'+totalPlanned+'</b> 天（'+wPct+'%）</div>';
+    h+='<div style="margin:16px 0 8px;font-size:13px;color:var(--text2)">总工时消耗：<b>'+fmtHours(totalUsed)+'</b> / <b>'+totalPlanned+'</b> 天（'+wPct+'%，按 7.5 小时=1 天折算）</div>';
     h+='<div style="height:8px;background:var(--border-lt);border-radius:4px;margin-bottom:16px;overflow:hidden">'+
       '<div style="height:100%;width:'+Math.min(wPct,100)+'%;background:'+barColor(100-wPct)+';border-radius:4px;transition:width .4s"></div></div>';
   }
@@ -1684,10 +1724,10 @@ function openProjectModal(pid, defaultCat){
       '</div>'+
       '<div class="form-row">'+
         '<div class="form-group"><label>计划工作日 <span class="label-badge">天</span></label><input type="number" id="modPWPlan" value="'+(p.workDaysPlanned||0)+'" min="0" placeholder="预计投入人天" oninput="scheduleAutoSave()"></div>'+
-        '<div class="form-group"><label>已用工作日 <span class="label-badge">天</span></label><input type="number" id="modPWUsed" value="'+(p.workDaysUsed||0)+'" min="0" placeholder="实际已消耗人天" oninput="scheduleAutoSave()"></div>'+
+        '<div class="form-group"><label>已用工作日 <span class="label-badge">天</span></label><input type="number" id="modPWUsed" value="'+(p.workDaysUsed||0)+'" min="0" step="0.1" placeholder="自动模式按登记工时÷7.5折算" oninput="scheduleAutoSave()"></div>'+
       '</div>'+
       (isNew?'':'<div class="form-group" style="margin-top:6px;font-size:12px;color:var(--text2)">'+
-        '已登记工时：<b style="color:var(--blue)">'+hoursUsedOfProject(pid)+' 小时</b>'+
+        '已登记工时：<b style="color:var(--blue)">'+fmtHours(hoursUsedOfProject(pid))+' 小时</b>（≈ '+fmtHours(hoursUsedOfProject(pid)/HOURS_PER_DAY)+' 个工作日）'+
         (worklogListByProject(pid).length?' <span style="color:var(--blue);cursor:pointer;text-decoration:underline" onclick="viewWorklogDetail(\''+pid+'\')">查看明细</span>':'')+
       '</div>')+
     '</div>'+
@@ -1852,7 +1892,7 @@ function saveProject(){
     endDate:document.getElementById('modPEnd').value,
     progress:Math.min(100,Math.max(0,parseInt(document.getElementById('modPProg').value)||0)),
     workDaysPlanned:Math.max(0,parseInt(document.getElementById('modPWPlan').value)||0),
-    workDaysUsed:Math.max(0,parseInt(document.getElementById('modPWUsed').value)||0),
+    workDaysUsed:Math.max(0,parseFloat(document.getElementById('modPWUsed').value)||0),
     desc:document.getElementById('modPDesc').value.trim(),
     milestones:editingMilestones.filter(function(m){return m.name.trim();}),
     autoProgress:_autoProg,
@@ -1938,6 +1978,69 @@ function saveTask(tid){
 function closeModal(){ document.getElementById('modalOverlay').classList.remove('open'); editingProjId=null; }
 
 /* ── Worklog 工时登记 ── */
+// ── 任务级工时登记：填数字 → 确认保存，记录登记日期时间与工时 ──
+function openTaskWorklogModal(tid){
+  var t=tasks.find(function(x){return x.id===tid;}); if(!t) return;
+  var p=projects.find(function(x){return x.id===t.projectId;});
+  var h='<div class="modal-title" style="margin-bottom:16px">登记工时 · '+es(t.name)+'</div>'+
+    '<input type="hidden" id="twTaskId" value="'+esc(t.id)+'">'+
+    '<div class="form-group"><label>所属项目</label><input value="'+es(p?p.name:'（未关联项目）')+'" readonly style="background:var(--border-lt);color:var(--text2)"></div>'+
+    '<div class="form-row">'+
+      '<div class="form-group"><label>工时数 <span class="label-badge">小时</span> <span style="color:var(--danger)">*</span></label>'+
+        '<input type="number" id="twHours" value="4" min="0.5" max="24" step="0.5" placeholder="如：4"></div>'+
+      '<div class="form-group"><label>记录人</label><input id="twPerson" value="'+esc(t.assignee||'')+'" placeholder="姓名（默认任务负责人）"></div>'+
+    '</div>'+
+    '<div class="form-group"><label>备注</label><input id="twNote" placeholder="做了什么（可选）"></div>'+
+    '<div style="font-size:12px;color:var(--text3);margin:4px 0 10px">登记后自动记录时间 <b style="color:var(--blue)">'+nowStamp()+'</b>，并按 <b style="color:var(--blue)">7.5 小时 = 1 天</b> 折算叠加到项目已用工作日</div>'+
+    '<div class="modal-footer">'+
+      '<button class="btn" onclick="closeModal()">取消</button>'+
+      '<button class="btn btn-primary" onclick="saveTaskWorklog()">确认保存</button>'+
+    '</div>'+
+    '<div style="margin-top:14px;border-top:1px solid var(--border-lt);padding-top:12px">'+
+      '<div id="twRecentTitle" style="font-size:12px;color:var(--text3);margin-bottom:8px"></div>'+
+      '<div id="twRecent"></div>'+
+    '</div>';
+  document.getElementById('modalBox').innerHTML=h;
+  document.getElementById('modalOverlay').classList.add('open');
+  renderTaskWorklogRecent();
+}
+function renderTaskWorklogRecent(){
+  var tid=(document.getElementById('twTaskId')||{}).value;
+  var box=document.getElementById('twRecent'); if(!box||!tid) return;
+  var list=worklogListByTask(tid);
+  var total=hoursUsedOfTask(tid);
+  document.getElementById('twRecentTitle').innerHTML='该任务已登记 <b style="color:var(--blue)">'+fmtHours(total)+' 小时</b>（约 '+fmtHours(total/HOURS_PER_DAY)+' 个工作日） · 共 '+list.length+' 笔';
+  if(!list.length){ box.innerHTML='<div style="font-size:12px;color:var(--text3)">暂无登记，填写上方数字后点击「确认保存」</div>'; return; }
+  var h='';
+  list.slice(0,10).forEach(function(w){
+    h+='<div style="display:flex;align-items:center;gap:8px;padding:6px 0;border-bottom:1px dashed var(--border-lt);font-size:12px">'+
+      '<span style="font-weight:600;min-width:48px">'+es(w.person)+'</span>'+
+      '<span style="color:var(--text3)">'+(w.createdAt?es(w.createdAt):es(w.date))+'</span>'+
+      '<span style="flex:1;color:var(--text2);overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="'+es(w.note||'')+'">'+(w.note?es(w.note):'')+'</span>'+
+      '<b>'+fmtHours(w.hours)+'h</b>'+
+      '<button class="btn btn-sm" style="color:var(--danger);padding:2px 6px" onclick="delWorklog(\''+w.id+'\')">删除</button>'+
+    '</div>';
+  });
+  box.innerHTML=h;
+}
+function saveTaskWorklog(){
+  var tid=document.getElementById('twTaskId').value;
+  var t=tasks.find(function(x){return x.id===tid;}); if(!t) return;
+  var hours=parseFloat(document.getElementById('twHours').value);
+  var person=(document.getElementById('twPerson').value||'').trim()||t.assignee||'未填写';
+  var note=(document.getElementById('twNote').value||'').trim();
+  if(!hours||isNaN(hours)||hours<=0){ toast('请填写正确的工时数'); return; }
+  if(hours>24){ toast('单次登记不超过 24 小时'); return; }
+  worklogs.push({id:genId(), projectId:t.projectId, taskId:tid, person:person, date:todayStr(), createdAt:nowStamp(), hours:hours, note:note});
+  var p=projects.find(function(x){return x.id===t.projectId;});
+  if(p && p.autoProgress!==false) refreshProjectAutoCalc(p);
+  saveData(true);
+  renderAll();
+  renderTaskWorklogRecent();
+  document.getElementById('twHours').value='';
+  document.getElementById('twNote').value='';
+  toast('已登记 '+person+' '+fmtHours(hours)+' 小时 ✓');
+}
 // 打开登记弹窗；pid 可选（从项目详情带出）
 function openWorklogModal(pid){
   var sel='';
@@ -1977,16 +2080,17 @@ function pickPerson(n){ document.getElementById('wlPerson').value=n; }
 // 最近 8 条登记
 function renderWorklogRecent(){
   var box=document.getElementById('wlRecent'); if(!box) return;
-  var list=(worklogs||[]).slice().sort(function(a,b){return a.date<b.date?1:-1;}).slice(0,8);
+  var list=(worklogs||[]).slice().sort(function(a,b){return (a.createdAt||a.date)<(b.createdAt||b.date)?1:-1;}).slice(0,8);
   if(!list.length){ box.innerHTML='<div style="font-size:12px;color:var(--text3)">暂无登记</div>'; return; }
   var pmap={}; projects.forEach(function(p){ pmap[p.id]=p.name; });
   var h='';
   list.forEach(function(w){
     h+='<div style="display:flex;align-items:center;gap:8px;padding:6px 0;border-bottom:1px dashed var(--border-lt);font-size:12px">'+
       '<span style="flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="'+es(pmap[w.projectId]||'')+'">'+es(pmap[w.projectId]||'未知项目')+'</span>'+
+      (w.taskId?'<span style="color:var(--blue)">任务</span>':'')+
       '<span style="color:var(--text2)">'+es(w.person)+'</span>'+
-      '<span style="color:var(--text3)">'+es(w.date)+'</span>'+
-      '<b>'+w.hours+'h</b>'+
+      '<span style="color:var(--text3)">'+es(w.createdAt||w.date)+'</span>'+
+      '<b>'+fmtHours(w.hours)+'h</b>'+
       '<button class="btn btn-sm" style="color:var(--danger);padding:2px 6px" onclick="delWorklog(\''+w.id+'\')">删除</button>'+
     '</div>';
   });
@@ -2003,7 +2107,7 @@ function saveWorklog(){
   if(!person){ toast('请填写记录人'); return; }
   if(!date){ toast('请选择日期'); return; }
   if(!hours||isNaN(hours)||hours<=0){ toast('请填写正确的工时数'); return; }
-  worklogs.push({id:genId(), projectId:pid, person:person, date:date, hours:hours, note:note});
+  worklogs.push({id:genId(), projectId:pid, person:person, date:date, createdAt:nowStamp(), hours:hours, note:note});
   // 自动进度项目：用新规则（工时优先）刷新
   var p=projects.find(function(x){return x.id===pid;});
   if(p && p.autoProgress!==false){ refreshProjectAutoCalc(p); }
@@ -2017,11 +2121,13 @@ function saveWorklog(){
 // 删除误登记
 function delWorklog(wid){
   var w=worklogs.find(function(x){return x.id===wid;}); if(!w) return;
-  if(!confirm('删除 '+w.person+' 于 '+w.date+' 的 '+w.hours+' 小时登记？')) return;
+  if(!confirm('删除 '+w.person+' 于 '+(w.createdAt||w.date)+' 的 '+w.hours+' 小时登记？')) return;
   worklogs=worklogs.filter(function(x){return x.id!==wid;});
   var p=projects.find(function(x){return x.id===w.projectId;});
   if(p && p.autoProgress!==false){ refreshProjectAutoCalc(p); }
   saveData(true); renderAll(); toast('已删除登记');
+  // 若任务级工时登记弹窗正打开，刷新其明细
+  if(document.getElementById('twRecent')) renderTaskWorklogRecent();
 }
 // 查看项目工时登记明细
 function viewWorklogDetail(pid){
@@ -2031,13 +2137,13 @@ function viewWorklogDetail(pid){
   if(!list.length){
     h+='<div class="empty">暂无登记，点击顶部「记工时」录入</div>';
   } else {
-    h+='<div style="font-size:12px;color:var(--text3);margin-bottom:8px">合计 '+list.reduce(function(s,w){return s+(+w.hours||0);},0)+' 小时 · '+list.length+' 笔</div>';
+    h+='<div style="font-size:12px;color:var(--text3);margin-bottom:8px">合计 '+fmtHours(list.reduce(function(s,w){return s+(+w.hours||0);},0))+' 小时 · '+list.length+' 笔</div>';
     list.forEach(function(w){
       h+='<div style="display:flex;align-items:center;gap:8px;padding:7px 0;border-bottom:1px dashed var(--border-lt);font-size:13px">'+
         '<span style="font-weight:600;min-width:56px">'+es(w.person)+'</span>'+
-        '<span style="color:var(--text3)">'+es(w.date)+'</span>'+
+        '<span style="color:var(--text3)">'+es(w.createdAt||w.date)+'</span>'+
         '<span style="flex:1;color:var(--text2);overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="'+es(w.note||'')+'">'+(w.note?es(w.note):'')+'</span>'+
-        '<b>'+w.hours+'h</b>'+
+        '<b>'+fmtHours(w.hours)+'h</b>'+
         '<button class="btn btn-sm" style="color:var(--danger);padding:2px 6px" onclick="delWorklog(\''+w.id+'\');setTimeout(function(){viewWorklogDetail(\''+pid+'\');},50)">删除</button>'+
       '</div>';
     });
@@ -2074,7 +2180,7 @@ function buildProjRows(){
       '截止日期':p.endDate||'',
       '进度%':p.progress||0,
       '计划工作日':p.workDaysPlanned||0,
-      '已用工作日':p.workDaysUsed||0,
+      '已用工作日':fmtHours(p.workDaysUsed||0),
       '工时消耗%':(p.workDaysPlanned>0?Math.round((p.workDaysUsed||0)/p.workDaysPlanned*100):0),
       '进度方式':p.autoProgress===false?'手动':'自动',
       '工时方式':p.autoWorkDays===false?'手动':'自动',
@@ -2109,12 +2215,16 @@ function buildMsRows(){
 }
 function buildWorklogRows(){
   var pmap={}; projects.forEach(function(p){ pmap[p.id]=p.name; });
-  var rows=(worklogs||[]).slice().sort(function(a,b){return a.date<b.date?1:-1;}).map(function(w){
+  var tmap={}; tasks.forEach(function(t){ tmap[t.id]=t.name; });
+  var rows=(worklogs||[]).slice().sort(function(a,b){return (a.createdAt||a.date)<(b.createdAt||b.date)?1:-1;}).map(function(w){
     return {
       '项目名称':pmap[w.projectId]||'未知项目',
+      '关联任务':w.taskId?(tmap[w.taskId]||''):'',
       '记录人':w.person||'',
       '登记日期':w.date||'',
+      '登记时间':w.createdAt||'',
       '工时(小时)':(+w.hours||0),
+      '折算工作日':Math.round((+w.hours||0)/HOURS_PER_DAY*10)/10,
       '备注':w.note||''
     };
   });
@@ -2141,7 +2251,7 @@ function buildStatsRows(){
   });
   Object.keys(personMap).forEach(function(k){
     var v=personMap[k];
-    rows.push({'统计项':'负责人：'+k,'数值':'项目 '+v.count+' 个 · 计划 '+v.planned+' 天 · 已用 '+v.used+' 天'});
+    rows.push({'统计项':'负责人：'+k,'数值':'项目 '+v.count+' 个 · 计划 '+v.planned+' 天 · 已用 '+fmtHours(v.used)+' 天'});
   });
   return rows;
 }
