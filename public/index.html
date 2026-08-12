@@ -299,12 +299,13 @@ input[type="text"],input[type="date"],input[type="number"],select,textarea{font-
   <div class="topbar-title">
     <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="var(--blue)" stroke-width="2"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/></svg>
     图书馆研发工作台
-    <span class="ver-badge">v3.3</span>
+    <span class="ver-badge">v3.4</span>
   </div>
   <div class="topbar-actions">
     <span id="syncDot" class="sync-dot sync-offline" title="本地存储" style="margin-right:2px"></span>
     <button class="btn btn-ghost btn-sm" onclick="showBackendConfig()" title="配置后台服务器">后台</button>
     <button class="btn btn-ghost btn-sm" id="btnClear" onclick="clearSample()" style="display:none">清空数据</button>
+    <button class="btn btn-ghost btn-sm" onclick="exportExcel()" title="导出 Excel 表格">Excel</button>
     <button class="btn btn-ghost btn-sm" onclick="exportData()">导出</button>
     <button class="btn btn-ghost btn-sm" onclick="document.getElementById('importFile').click()">导入</button>
     <input type="file" id="importFile" accept=".json" style="display:none" onchange="importData(this)">
@@ -1815,6 +1816,131 @@ function clearSample(){
   if(!confirm('再次确认：你确定要删除全部数据吗？')) return;
   projects=[]; tasks=[]; saveData(true); renderAll(); toast('已清空全部数据');
 }
+/* ── Excel 导出 ── */
+function buildProjRows(){
+  return projects.map(function(p,i){
+    var mstones=(p.milestones||[]).map(function(m){return m.name+' ('+m.date+')';}).join('、');
+    return {
+      '编号':i+1,
+      '项目名称':p.name||'',
+      '分类':p.category||'',
+      '状态':p.status||'',
+      '优先级':p.priority||'',
+      '负责人':p.owner||'',
+      '开始日期':p.startDate||'',
+      '截止日期':p.endDate||'',
+      '进度%':p.progress||0,
+      '计划工作日':p.workDaysPlanned||0,
+      '已用工作日':p.workDaysUsed||0,
+      '工时消耗%':(p.workDaysPlanned>0?Math.round((p.workDaysUsed||0)/p.workDaysPlanned*100):0),
+      '进度方式':p.autoProgress===false?'手动':'自动',
+      '工时方式':p.autoWorkDays===false?'手动':'自动',
+      '关键节点':mstones,
+      '描述':p.desc||''
+    };
+  });
+}
+function buildTaskRows(){
+  return tasks.map(function(t,i){
+    var pr=projects.find(function(x){return x.id===t.projectId;});
+    return {
+      '编号':i+1,
+      '所属项目':pr?pr.name:'',
+      '项目分类':pr?pr.category:'',
+      '任务名称':t.name||'',
+      '负责人':t.assignee||'',
+      '截止日期':t.dueDate||'',
+      '状态':t.status||'',
+      '描述':t.desc||''
+    };
+  });
+}
+function buildMsRows(){
+  var rows=[];
+  projects.forEach(function(p){
+    (p.milestones||[]).forEach(function(m){
+      rows.push({'项目名称':p.name||'','节点名称':m.name||'','节点日期':m.date||''});
+    });
+  });
+  return rows;
+}
+function buildStatsRows(){
+  var done=tasks.filter(function(t){return t.status==='已完成';}).length;
+  var delivered=projects.filter(function(p){return p.status==='已交付';}).length;
+  var rows=[
+    {'统计项':'项目总数','数值':projects.length},
+    {'统计项':'任务总数','数值':tasks.length},
+    {'统计项':'已完成任务','数值':done},
+    {'统计项':'任务完成率','数值':tasks.length?Math.round(done/tasks.length*100)+'%':'0%'},
+    {'统计项':'已交付项目','数值':delivered},
+    {'统计项':'项目交付率','数值':projects.length?Math.round(delivered/projects.length*100)+'%':'0%'}
+  ];
+  var personMap={};
+  projects.forEach(function(p){
+    var o=p.owner||'未分配';
+    personMap[o]=personMap[o]||{planned:0,used:0,count:0};
+    personMap[o].planned+=p.workDaysPlanned||0;
+    personMap[o].used+=p.workDaysUsed||0;
+    personMap[o].count++;
+  });
+  Object.keys(personMap).forEach(function(k){
+    var v=personMap[k];
+    rows.push({'统计项':'负责人：'+k,'数值':'项目 '+v.count+' 个 · 计划 '+v.planned+' 天 · 已用 '+v.used+' 天'});
+  });
+  return rows;
+}
+
+function downloadFile(content,filename,type){
+  var blob=new Blob([content],{type:type||'application/octet-stream'});
+  var a=document.createElement('a'); a.href=URL.createObjectURL(blob); a.download=filename; a.click();
+  setTimeout(function(){URL.revokeObjectURL(a.href);},3000);
+}
+function downloadCsv(rows,filename){
+  if(!rows.length) rows=[{'提示':'暂无数据'}];
+  var head=Object.keys(rows[0]);
+  var lines=[head.join(',')];
+  rows.forEach(function(r){
+    lines.push(head.map(function(k){
+      var v=r[k]===undefined?'':String(r[k]);
+      return '"'+v.replace(/"/g,'""')+'"';
+    }).join(','));
+  });
+  downloadFile('\ufeff'+lines.join('\r\n'),filename,'text/csv;charset=utf-8');
+}
+
+function exportExcel(){
+  var projRows=buildProjRows(), taskRows=buildTaskRows(), msRows=buildMsRows(), statsRows=buildStatsRows();
+  var loadLib=function(cb){
+    if(window.XLSX){ cb(true); return; }
+    var s=document.createElement('script');
+    s.src='https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js';
+    s.onload=function(){ cb(true); };
+    s.onerror=function(){ cb(false); };
+    document.head.appendChild(s);
+  };
+  loadLib(function(ok){
+    if(!ok){ // 无网络：回退 CSV（Excel 可直接打开）
+      downloadCsv(projRows,'图书馆研发工作台_项目表_'+todayStr()+'.csv');
+      downloadCsv(taskRows,'图书馆研发工作台_任务表_'+todayStr()+'.csv');
+      if(msRows.length) downloadCsv(msRows,'图书馆研发工作台_关键节点_'+todayStr()+'.csv');
+      downloadCsv(statsRows,'图书馆研发工作台_统计汇总_'+todayStr()+'.csv');
+      toast('离线模式，已导出 4 个 CSV 文件（Excel 可打开）');
+      return;
+    }
+    var wb=XLSX.utils.book_new();
+    function addSheet(name,rows){
+      if(!rows.length) rows=[{'提示':'暂无数据'}];
+      XLSX.utils.book_append_sheet(wb,XLSX.utils.json_to_sheet(rows),name);
+    }
+    addSheet('项目总表',projRows);
+    addSheet('任务明细',taskRows);
+    addSheet('关键节点',msRows);
+    addSheet('统计汇总',statsRows);
+    XLSX.writeFile(wb,'图书馆研发工作台_数据_'+todayStr()+'.xlsx');
+    toast('已导出 Excel（4 个工作表）');
+  });
+}
+
 function exportData(){
   var data={projects:projects,tasks:tasks,exportedAt:new Date().toISOString()};
   var blob=new Blob([JSON.stringify(data,null,2)],{type:'application/json'});
