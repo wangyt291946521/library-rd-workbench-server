@@ -310,7 +310,7 @@ input[type="text"],input[type="date"],input[type="number"],select,textarea{font-
   <div class="topbar-title">
     <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="var(--blue)" stroke-width="2"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/></svg>
     图书馆研发工作台
-    <span class="ver-badge">v3.8</span>
+    <span class="ver-badge">v3.10</span>
   </div>
   <div class="topbar-actions">
     <span id="syncDot" class="sync-dot sync-offline" title="本地存储" style="margin-right:2px"></span>
@@ -703,17 +703,10 @@ function autoCalcWorkDaysPlanned(p){
   if(!p.startDate||!p.endDate) return 0;
   return bizDaysBetween(parseDate(p.startDate),parseDate(p.endDate));
 }
-// 已用工作日 = 项目累计登记工时折算（7.5 小时 = 1 天）；无登记工时则按开始到 min(今天,截止) 的工作日数推算
+// 已用工作日 = 项目累计登记工时折算（7.5 小时 = 1 天）；无登记工时则默认 0
 function autoCalcWorkDaysUsed(p){
   var logged=hoursUsedOfProject(p.id);
-  if(logged>0) return Math.round(logged/HOURS_PER_DAY*10)/10;
-  if(!p.startDate) return 0;
-  var sd=parseDate(p.startDate); if(!isValidDate(sd)) return 0;
-  var today=new Date(); today.setHours(0,0,0,0);
-  var ed=p.endDate?parseDate(p.endDate):today;
-  if(!isValidDate(ed)||ed>today) ed=today;
-  if(sd>today) return 0;
-  return bizDaysBetween(sd,ed);
+  return logged>0 ? (logged/HOURS_PER_DAY) : 0;   // 保留实际计算值，不做四舍五入
 }
 // 对单个项目应用自动计算
 function refreshProjectAutoCalc(p){
@@ -758,6 +751,14 @@ function nowStamp(){
 function fmtHours(h){
   h=Math.round((+h||0)*10)/10;
   return h%1===0?String(h):h.toFixed(1);
+}
+// 工作日格式化：据登记工时折算，无登记为 0；整数不带小数；
+// 小数**不做四舍五入**，去尾保留实际计算结果（最多 4 位），并去除尾随 0
+function fmtWorkDays(d){
+  d=+d||0;
+  if(d===0) return '0';
+  if(d%1===0) return String(d);
+  return String(Math.floor(d*10000)/10000);
 }
 // 项目计划小时 = 计划人天 × 8
 function hoursPlannedOf(p){ return (p.workDaysPlanned||0)*HOURS_PER_DAY; }
@@ -1020,7 +1021,7 @@ function renderKanban(){
     h+='<div class="kcard-progress"><div class="kcard-progress-bar"><div class="kcard-progress-fill" style="width:'+p.progress+'%;background:'+barColor+'"></div></div><span class="kcard-progress-txt">'+p.progress+'%</span></div>';
     // workload bar（已用工作日由登记工时折算，7.5 小时 = 1 天）
     if(p.workDaysPlanned>0){
-      var wlUsed=fmtHours(p.workDaysUsed);
+      var wlUsed=fmtWorkDays(p.workDaysUsed);
       var wlPct=Math.min(100,Math.round((p.workDaysUsed||0)/p.workDaysPlanned*100));
       var wlTip='已用工作日 '+wlUsed+' 天';
       if(hoursUsedOfProject(p.id)>0) wlTip+='（登记 '+fmtHours(hoursUsedOfProject(p.id))+' 小时折算）';
@@ -1172,8 +1173,8 @@ function showDetail(pid){
     '<div class="detail-field"><label>进度'+(p.autoProgress!==false?' <span style="font-size:10px;color:var(--blue);font-weight:400;background:var(--blue-bg);padding:1px 6px;border-radius:8px">自动</span>':'')+'</label>'+
     '<div class="detail-progress"><div class="detail-progress-bar"><div class="fill" style="width:'+p.progress+'%;background:'+barColor+'"></div></div><span class="detail-progress-val">'+p.progress+'%</span></div></div>'+
     '<div class="detail-field"><label>工作量'+(p.autoWorkDays!==false?' <span style="font-size:10px;color:var(--blue);font-weight:400;background:var(--blue-bg);padding:1px 6px;border-radius:8px">自动</span>':'')+'</label><div class="val" style="font-size:13px">'+
-      '计划工作日：<b>'+(p.workDaysPlanned||0)+'天</b> &nbsp; 已用工作日：<b style="color:'+((p.workDaysUsed||0)>(p.workDaysPlanned||1)?'var(--danger)':'var(--text)')+'">'+fmtHours(p.workDaysUsed)+'天</b>'+
-      (hoursUsedOfProject(p.id)>0?' &nbsp; <span style="color:var(--text3)">(登记 '+fmtHours(hoursUsedOfProject(p.id))+' 小时 ≈ '+fmtHours(hoursUsedOfProject(p.id)/HOURS_PER_DAY)+' 天)</span>':'')+
+      '计划工作日：<b>'+(p.workDaysPlanned||0)+'天</b> &nbsp; 已用工作日：<b style="color:'+((p.workDaysUsed||0)>(p.workDaysPlanned||1)?'var(--danger)':'var(--text)')+'">'+fmtWorkDays(p.workDaysUsed)+'天</b>'+
+      (hoursUsedOfProject(p.id)>0?' &nbsp; <span style="color:var(--text3)">(登记 '+fmtHours(hoursUsedOfProject(p.id))+' 小时 ≈ '+fmtWorkDays(hoursUsedOfProject(p.id)/HOURS_PER_DAY)+' 天)</span>':'')+
       (p.workDaysPlanned>0?' &nbsp; (消耗 '+Math.round((p.workDaysUsed||0)/p.workDaysPlanned*100)+'%)':'')+
     '</div></div>';
 
@@ -1396,7 +1397,7 @@ function renderTasks(){
     var th=hoursUsedOfTask(t.id);
     h+='<div class="'+cls+'">'+
       '<div class="task-top"><span class="task-name">'+es(t.name)+'</span>'+
-      (th>0?'<span class="task-hours" title="该任务已登记 '+fmtHours(th)+' 小时（约 '+fmtHours(th/HOURS_PER_DAY)+' 个工作日）">⏱ '+fmtHours(th)+'h</span>':'')+
+      (th>0?'<span class="task-hours" title="该任务已登记 '+fmtHours(th)+' 小时（约 '+fmtWorkDays(th/HOURS_PER_DAY)+' 个工作日）">⏱ '+fmtHours(th)+'h</span>':'')+
       '</div>'+
       '<div class="task-meta">'+
         '<span>'+es(t.assignee||'未分配')+'</span><span>'+t.dueDate+'</span>'+
@@ -1495,7 +1496,7 @@ function renderStatsView(){
   // ── 整体工作量 ──
   if(totalPlanned>0){
     var wPct=Math.round(totalUsed/totalPlanned*100);
-    h+='<div style="margin:16px 0 8px;font-size:13px;color:var(--text2)">总工时消耗：<b>'+fmtHours(totalUsed)+'</b> / <b>'+totalPlanned+'</b> 天（'+wPct+'%，按 7.5 小时=1 天折算）</div>';
+    h+='<div style="margin:16px 0 8px;font-size:13px;color:var(--text2)">总工时消耗：<b>'+fmtWorkDays(totalUsed)+'</b> / <b>'+totalPlanned+'</b> 天（'+wPct+'%，按 7.5 小时=1 天折算）</div>';
     h+='<div style="height:8px;background:var(--border-lt);border-radius:4px;margin-bottom:16px;overflow:hidden">'+
       '<div style="height:100%;width:'+Math.min(wPct,100)+'%;background:'+barColor(100-wPct)+';border-radius:4px;transition:width .4s"></div></div>';
   }
@@ -1724,10 +1725,10 @@ function openProjectModal(pid, defaultCat){
       '</div>'+
       '<div class="form-row">'+
         '<div class="form-group"><label>计划工作日 <span class="label-badge">天</span></label><input type="number" id="modPWPlan" value="'+(p.workDaysPlanned||0)+'" min="0" placeholder="预计投入人天" oninput="scheduleAutoSave()"></div>'+
-        '<div class="form-group"><label>已用工作日 <span class="label-badge">天</span></label><input type="number" id="modPWUsed" value="'+(p.workDaysUsed||0)+'" min="0" step="0.1" placeholder="自动模式按登记工时÷7.5折算" oninput="scheduleAutoSave()"></div>'+
+        '<div class="form-group"><label>已用工作日 <span class="label-badge">天</span></label><input type="number" id="modPWUsed" value="'+fmtWorkDays(p.workDaysUsed||0)+'" min="0" step="0.1" placeholder="自动模式按登记工时÷7.5折算" oninput="scheduleAutoSave()"></div>'+
       '</div>'+
       (isNew?'':'<div class="form-group" style="margin-top:6px;font-size:12px;color:var(--text2)">'+
-        '已登记工时：<b style="color:var(--blue)">'+fmtHours(hoursUsedOfProject(pid))+' 小时</b>（≈ '+fmtHours(hoursUsedOfProject(pid)/HOURS_PER_DAY)+' 个工作日）'+
+        '已登记工时：<b style="color:var(--blue)">'+fmtHours(hoursUsedOfProject(pid))+' 小时</b>（≈ '+fmtWorkDays(hoursUsedOfProject(pid)/HOURS_PER_DAY)+' 个工作日）'+
         (worklogListByProject(pid).length?' <span style="color:var(--blue);cursor:pointer;text-decoration:underline" onclick="viewWorklogDetail(\''+pid+'\')">查看明细</span>':'')+
       '</div>')+
     '</div>'+
@@ -1836,14 +1837,15 @@ function updateWorkAutoCalc(){
 
   if(_autoWork){
     var planned2=autoCalcWorkDaysPlanned({startDate:sd,endDate:ed});
-    var used2=autoCalcWorkDaysUsed({startDate:sd,endDate:ed});
+    var usedProj=projects.find(function(x){return x.id===editingProjId;})||{};
+    var used2=autoCalcWorkDaysUsed(usedProj);
     wPlanInput.value=planned2;
     wUsedInput.value=used2;
     wPlanInput.classList.add('input-disabled');
     wUsedInput.classList.add('input-disabled');
     if(workHint){
       workHint.className='auto-calc-hint ok';
-      workHint.innerHTML='<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 11l3 3L22 4"/></svg>计划 '+planned2+' 工作日 | 已用 '+used2+' 工作日（按工作日自动计算，不含周末）';
+      workHint.innerHTML='<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 11l3 3L22 4"/></svg>计划 '+planned2+' 工作日 | 已用 '+fmtWorkDays(used2)+' 工作日（按登记工时÷7.5 折算，无登记为 0）';
     }
   } else {
     wPlanInput.classList.remove('input-disabled');
@@ -2014,7 +2016,7 @@ function renderTaskWorklogRecent(){
   var box=document.getElementById('twRecent'); if(!box||!tid) return;
   var list=worklogListByTask(tid);
   var total=hoursUsedOfTask(tid);
-  document.getElementById('twRecentTitle').innerHTML='该任务已登记 <b style="color:var(--blue)">'+fmtHours(total)+' 小时</b>（约 '+fmtHours(total/HOURS_PER_DAY)+' 个工作日） · 共 '+list.length+' 笔';
+  document.getElementById('twRecentTitle').innerHTML='该任务已登记 <b style="color:var(--blue)">'+fmtHours(total)+' 小时</b>（约 '+fmtWorkDays(total/HOURS_PER_DAY)+' 个工作日） · 共 '+list.length+' 笔';
   if(!list.length){ box.innerHTML='<div style="font-size:12px;color:var(--text3)">暂无登记，填写上方数字后点击「确认保存」</div>'; return; }
   var h='';
   list.slice(0,10).forEach(function(w){
@@ -2230,7 +2232,7 @@ function buildProjRows(){
       '截止日期':p.endDate||'',
       '进度%':p.progress||0,
       '计划工作日':p.workDaysPlanned||0,
-      '已用工作日':fmtHours(p.workDaysUsed||0),
+      '已用工作日':fmtWorkDays(p.workDaysUsed||0),
       '工时消耗%':(p.workDaysPlanned>0?Math.round((p.workDaysUsed||0)/p.workDaysPlanned*100):0),
       '进度方式':p.autoProgress===false?'手动':'自动',
       '工时方式':p.autoWorkDays===false?'手动':'自动',
@@ -2301,7 +2303,7 @@ function buildStatsRows(){
   });
   Object.keys(personMap).forEach(function(k){
     var v=personMap[k];
-    rows.push({'统计项':'负责人：'+k,'数值':'项目 '+v.count+' 个 · 计划 '+v.planned+' 天 · 已用 '+fmtHours(v.used)+' 天'});
+    rows.push({'统计项':'负责人：'+k,'数值':'项目 '+v.count+' 个 · 计划 '+v.planned+' 天 · 已用 '+fmtWorkDays(v.used)+' 天'});
   });
   return rows;
 }
